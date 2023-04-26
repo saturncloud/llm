@@ -68,11 +68,14 @@ def index():
                             headers: {"Content-Type": "application/json"},
                             body: JSON.stringify(data)
                         });
-                        const content = await response.json()
-
-                        answerCell.innerText = content["answer"];
-                        sourceCell.innerText = content["source"];
-                        scoreCell.innerText = content["score"];
+                        if (response.ok) {
+                            const content = await response.json();
+                            answerCell.innerText = content["answer"];
+                            sourceCell.innerText = content["source"];
+                            scoreCell.innerText = content["score"];
+                        } else {
+                            answerCell.innerText = "ERROR";
+                        }
                         submitButton.disabled = false;
                     })
                 }

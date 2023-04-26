@@ -25,7 +25,7 @@ class BertQA:
     def __init__(self):
         self.tokenizer: BertTokenizerFast = BertTokenizerFast.from_pretrained('bert-large-uncased-whole-word-masking-finetuned-squad')
         self.model: BertForQuestionAnswering = BertForQuestionAnswering.from_pretrained("bert-large-uncased-whole-word-masking-finetuned-squad")
-        self.docs = self.load_docs_tokenized(skip={"enterprise", "examples", "release-notes"})
+        self.docs = load_docs(skip={"enterprise", "examples", "release-notes"})
 
     def search_docs(self, question: str, span_length: int = 512, span_overlap: int = 128) -> QAResponse:
         # Only searching the concepts section for now
@@ -44,7 +44,7 @@ class BertQA:
     def answer_question(
         self,
         question: str,
-        context: Union[str, BatchEncoding],
+        context: str,
         span_length: int = 512,
         span_overlap: int = 128,
     ) -> Tuple[str, float]:
@@ -53,42 +53,21 @@ class BertQA:
         assert span_length > 0
         assert span_overlap > 0
 
+
         # Tokenize input
-        question_inputs = self.tokenize(question).input_ids
-        if isinstance(context, str):
-            context_inputs = self.tokenize(context).input_ids
-        else:
-            context_inputs = context.input_ids
-
-        # Strip CLS token from start of context
-        if context_inputs[0][0] == self.tokenizer.cls_token_id:
-            context_inputs = context_inputs[:, 1:]
-
-        question_length = len(question_inputs[0])
-        context_length = len(context_inputs[0])
-        context_window = span_length - question_length
-        step_size = min(span_length - span_overlap, context_window)
-
-        assert question_length < span_length, "span_length must be greater than the length of the question"
-
-        # Break input into batches with a sliding window over the context
-        # Each batch includes the full question with a piece of the context
-        input_batches = torch.tensor([], dtype=torch.int64)
-        token_type_id_batches = torch.tensor([], dtype=torch.int64)
-        i = 0
-        while i < context_length:
-            window_end = min(i + context_window, context_length)
-            num_tokens = window_end - i
-            padding = torch.full([1, context_window - num_tokens], self.tokenizer.pad_token_id)
-            window_inputs = torch.cat((question_inputs, context_inputs[:, i:window_end], padding), 1)
-            token_type_ids = torch.cat((torch.full([1, question_length], 0), torch.full([1, span_length - question_length], 1)), 1)
-
-            input_batches = torch.cat((input_batches, window_inputs), 0)
-            token_type_id_batches = torch.cat((token_type_id_batches, token_type_ids))
-            i += step_size
+        inputs = self.tokenize(
+            question,
+            context,
+            max_length=span_length,
+            padding=True,
+            truncation="only_second",
+            stride=span_overlap,
+            return_overflowing_tokens=True,
+            return_offsets_mapping=True,
+        )
 
         # Run model
-        output = self.model(input_batches, token_type_ids=token_type_id_batches)
+        output = self.model(inputs.input_ids, token_type_ids=inputs.token_type_ids)
         answer_start_scores = output["start_logits"]
         answer_end_scores = output["end_logits"]
 
@@ -107,19 +86,22 @@ class BertQA:
 
         start_index = batch_start_indices[best_batch]
         end_index = batch_end_indices[best_batch]
-        answer_ids = input_batches[best_batch, start_index:end_index+1]
+        answer_ids = inputs.input_ids[best_batch, start_index:end_index+1]
 
         # If answer starts with CLS token, then the question is included. Remove it.
         if len(answer_ids) > 0 and answer_ids[0] == self.tokenizer.cls_token_id:
-            answer_ids = answer_ids[question_length:]
+            sep_idx = 0
+            for i, id in enumerate(answer_ids):
+                if id == self.tokenizer.sep_token_id:
+                    sep_idx = i
+                    break
+            answer_ids = answer_ids[sep_idx+1:]
+
         # Remove any other special tokens from the answer
         for special_id in self.tokenizer.all_special_ids:
             answer_ids = answer_ids[answer_ids != special_id]
 
         answer = self.tokenizer.decode(answer_ids)
-        if answer.startswith(question):
-            answer = answer[len(question):]
-
         return answer, float(batch_avg_scores[best_batch])
 
     def tokenize(
@@ -131,12 +113,3 @@ class BertQA:
         **kwargs,
     ) -> BatchEncoding:
         return self.tokenizer(text, text_pair, add_special_tokens=add_special_tokens, return_tensors=return_tensors, **kwargs)
-
-    def load_docs_tokenized(self, skip: Optional[Iterable[str]] = None) -> Dict[str, Dict[str, torch.Tensor]]:
-        docs = load_docs(skip=skip)
-        tokenized: Dict[str, Dict[str, torch.Tensor]] = {}
-        for section, files in docs.items():
-            tokenized[section] = {}
-            for file, content in files.items():
-                tokenized[section][file] = self.tokenize(content)
-        return tokenized

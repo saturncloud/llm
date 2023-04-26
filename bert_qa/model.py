@@ -4,18 +4,24 @@ from typing import Any, Dict, Iterable, Optional, Tuple, Union
 import torch
 from transformers import BatchEncoding, BertTokenizerFast, BertForQuestionAnswering
 
-from bert_qa.docs import load_docs
+from bert_qa.docs import DOCS_DIR, load_docs
 
 
 @dataclass
-class QAResponse:
+class Question:
+    text: str
+    section: str = "concepts"
+
+
+@dataclass
+class Answer:
+    text: str
     question: str
-    answer: str
     source: str
     score: float
 
     def __str__(self) -> str:
-        return self.answer
+        return self.text
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -23,23 +29,23 @@ class QAResponse:
 
 class BertQA:
     def __init__(self):
+        self.docs = load_docs()
         self.tokenizer: BertTokenizerFast = BertTokenizerFast.from_pretrained('bert-large-uncased-whole-word-masking-finetuned-squad')
         self.model: BertForQuestionAnswering = BertForQuestionAnswering.from_pretrained("bert-large-uncased-whole-word-masking-finetuned-squad")
-        self.docs = load_docs(skip={"enterprise", "examples", "release-notes"})
 
-    def search_docs(self, question: str, span_length: int = 512, span_overlap: int = 128) -> QAResponse:
+    def search_docs(self, question: Question, span_length: int = 512, span_overlap: int = 128) -> Answer:
         # Only searching the concepts section for now
-        section = "concepts"
         best_score = -1e20
         best_answer = ""
         best_source = ""
-        for file, context in self.docs[section].items():
-            answer, score = self.answer_question(question, context, span_length=span_length, span_overlap=span_overlap)
+
+        for file, context in self.docs[question.section].items():
+            answer, score = self.answer_question(question.text, context, span_length=span_length, span_overlap=span_overlap)
             if answer and score > best_score:
                 best_answer = answer
-                best_source = f"{section}/{file}"
+                best_source = file
                 best_score = score
-        return QAResponse(question, best_answer, best_source, best_score)
+        return Answer(best_answer, question.text, best_source, best_score)
 
     def answer_question(
         self,
@@ -63,7 +69,6 @@ class BertQA:
             truncation="only_second",
             stride=span_overlap,
             return_overflowing_tokens=True,
-            return_offsets_mapping=True,
         )
 
         # Run model
@@ -71,6 +76,8 @@ class BertQA:
         answer_start_scores = output["start_logits"]
         answer_end_scores = output["end_logits"]
 
+        # TODO: Remove answers that are in the qusetion (check via token_type_ids)
+        #       before determining best answer.
         # Best answers in each span
         batch_start_indices = torch.argmax(answer_start_scores, 1)
         batch_end_indices = torch.argmax(answer_end_scores, 1)

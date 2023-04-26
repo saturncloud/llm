@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>Saturn Docs BERT-QA</title>
+    </head>
+    <body>
+        <h1>Saturn Docs BERT-QA</h1>
+
+        <form action="" id="question_form">
+            <label for="question">Question:</label>
+            <input type="text" id="question" name="text">
+            <label for="section">Section:</label>
+            <select id="section" name="section">
+                <option value="concepts">Concepts</option>
+                <option value="using-saturn-cloud">Using Saturn Cloud</option>
+                <option value="examples">Examples</option>
+                <option value="images">Images</option>
+                <option value="best-practices">Best Practices</option>
+                <option value="administration">Administration</option>
+                <option value="troubleshooting">Troubleshooting</option>
+                <option value="enterprise">Enterprise</option>
+                <option value="security">Security</option>
+                <option value="release-notes">Release Notes</option>
+                <option value="quickstart">Quickstart</option>
+            </select>
+            <br><br>
+            <input type="submit" id="submit_button" value="Submit">
+        </form>
+        <h2>History:</h2>
+        <table id="answers">
+            <tr>
+                <th>Question</th>
+                <th>Answer</th>
+                <th>Source</th>
+                <th>Score</th>
+            </tr>
+        </table>
+    </body>
+    <script>
+        const questionForm = document.getElementById("question_form");
+        const questionInput = document.getElementById("question");
+        const submitButton = document.getElementById("submit_button");
+        const answersTable = document.getElementById("answers");
+
+        if (questionForm) {
+            questionForm.addEventListener("submit", async function(e) {
+                e.preventDefault();
+                submitButton.disabled = true;
+
+                const data = {};
+                for (const pair of new FormData(questionForm)) {
+                    data[pair[0]] = pair[1];
+                }
+                questionInput.value = "";
+
+                const row = answers.insertRow(1);
+                const questionCell = row.insertCell(0);
+                const answerCell = row.insertCell(1);
+                const sourceCell = row.insertCell(2);
+                const scoreCell = row.insertCell(3);
+                questionCell.innerText = data["text"];
+                answerCell.innerText = "..."
+
+                const response = await fetch("/api/question", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify(data)
+                });
+                if (response.ok) {
+                    const content = await response.json();
+                    answerCell.innerText = content["text"];
+                    sourceCell.innerText = content["source"];
+                    scoreCell.innerText = content["score"];
+                } else {
+                    answerCell.innerText = "ERROR";
+                }
+                submitButton.disabled = false;
+            })
+        }
+    </script>
+    <style>
+        table {
+            min-width: 200px;
+        }
+
+        table, th, td {
+            border: 1px solid black;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 0 1em 0 1em;
+        }
+    </style>
+</html>

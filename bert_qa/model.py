@@ -1,5 +1,5 @@
 from dataclasses import asdict, dataclass
-from typing import Any, Callable, Dict, Iterable, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, Optional, Tuple, Union
 
 import torch
 from transformers import BatchEncoding, BertTokenizerFast, BertForQuestionAnswering
@@ -30,6 +30,9 @@ class BertQA:
     def search_docs(self, question: str, span_length: int = 512, span_overlap: int = 128) -> Answer:
         # Only searching the concepts section for now
         section = "concepts"
+        best_score = -1e20
+        best_answer = ""
+        best_source = ""
         for file, context in self.docs[section].items():
             answer, score = self.answer_question(question, context, span_length=span_length, span_overlap=span_overlap)
             if answer and score > best_score:

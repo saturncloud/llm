@@ -71,7 +71,7 @@ class BertQA:
         answer_start_scores = output["start_logits"]
         answer_end_scores = output["end_logits"]
 
-        # Determine best matching answer
+        # Best answers in each span
         batch_start_indices = torch.argmax(answer_start_scores, 1)
         batch_end_indices = torch.argmax(answer_end_scores, 1)
         batch_start_scores = torch.tensor([
@@ -81,9 +81,12 @@ class BertQA:
             scores[batch_end_indices[i]] for i, scores in enumerate(answer_end_scores)
         ])
 
-        batch_avg_scores = (batch_start_scores + batch_end_scores) / 2
+        # Combine start and end scores to get an approximation for the whole answer
+        # Weighted average favoring start score
+        batch_avg_scores = (1.5 * batch_start_scores + 0.5 * batch_end_scores) / 2
         best_batch = torch.argmax(batch_avg_scores)
 
+        # Retrieve token IDs for the answer
         start_index = batch_start_indices[best_batch]
         end_index = batch_end_indices[best_batch]
         answer_ids = inputs.input_ids[best_batch, start_index:end_index+1]

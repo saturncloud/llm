@@ -1,0 +1,24 @@
+name: saturn
+channels:
+    - pytorch
+    - fastai
+    - rapidsai
+    - nodefaults
+    - conda-forge
+dependencies:
+    - cudatoolkit=11.3
+    - cudatoolkit-dev=11.3
+    - ipykernel=6.13.0
+    - ipywidgets<9,>=8
+    - pytorch=1.12.0
+    - pip
+    - python=3.9
+    - pip:
+      - fastapi
+      - uvicorn
+      - transformers
+      - torch<1.13,>=1.12.0
+      - numpy<1.23,>=1.18
+      - gptq
+      - accelerate
+      - protobuf<3.21

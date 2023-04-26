@@ -8,14 +8,14 @@ from bert_qa.docs import load_docs
 
 
 @dataclass
-class Answer:
+class QAResponse:
     question: str
-    text: str
+    answer: str
     source: str
     score: float
 
     def __str__(self) -> str:
-        return self.text
+        return self.answer
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -27,7 +27,7 @@ class BertQA:
         self.model: BertForQuestionAnswering = BertForQuestionAnswering.from_pretrained("bert-large-uncased-whole-word-masking-finetuned-squad")
         self.docs = self.load_docs_tokenized(skip={"enterprise", "examples", "release-notes"})
 
-    def search_docs(self, question: str, span_length: int = 512, span_overlap: int = 128) -> Answer:
+    def search_docs(self, question: str, span_length: int = 512, span_overlap: int = 128) -> QAResponse:
         # Only searching the concepts section for now
         section = "concepts"
         best_score = -1e20
@@ -39,7 +39,7 @@ class BertQA:
                 best_answer = answer
                 best_source = f"{section}/{file}"
                 best_score = score
-        return Answer(question, best_answer, best_source, best_score)
+        return QAResponse(question, best_answer, best_source, best_score)
 
     def answer_question(
         self,

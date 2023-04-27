@@ -23,9 +23,15 @@ def index():
     return FileResponse(str(pathlib.Path(__file__).parent) + "/index.html", media_type="text/html")
 
 
-@app.post("/api/question")
+@app.post("/api/docs")
 def post_question(body: QuestionBody):
     answer = bert_qa.search_docs(body.question, body.section, span_length=384, span_overlap=64)
+    return JSONResponse(answer.to_dict())
+
+
+@app.post("/api/glossary")
+def post_glossary_question(body: QuestionBody):
+    answer = bert_qa.search_glossary(body.question, "", span_length=384, span_overlap=64)
     return JSONResponse(answer.to_dict())
 
 

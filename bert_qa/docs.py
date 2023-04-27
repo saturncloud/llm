@@ -1,8 +1,11 @@
 
 
 
+from functools import lru_cache
 import os
-from typing import Dict, Iterable, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
+
+from bert_qa.scrape import GLOSSARY_DIR
 
 DOCS_DIR = os.getenv("DOCS_DIR", "/data/docs")
 
@@ -27,3 +30,16 @@ def load_docs(skip: Optional[Iterable[str]] = frozenset()) -> Dict[str, Dict[str
         with open(f"{DOCS_DIR}/{file}", "r") as f:
             docs[section][file] = f.read()
     return docs
+
+
+def glossary_entries() -> List[str]:
+    entries = os.listdir(GLOSSARY_DIR)
+    return [e.rsplit(".", 1)[0] for e in entries]
+
+
+@lru_cache()
+def load_glossary_entry(name: str) -> str:
+    if not name.endswith(".txt"):
+        name += ".txt"
+    with open(os.path.join(GLOSSARY_DIR, name)) as f:
+        return f.read()

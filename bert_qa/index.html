@@ -61,7 +61,7 @@
                 questionCell.innerText = data["question"];
                 answerCell.innerText = "..."
 
-                const response = await fetch("/api/question", {
+                const response = await fetch("/api/docs", {
                     method: "POST",
                     headers: {"Content-Type": "application/json"},
                     body: JSON.stringify(data)

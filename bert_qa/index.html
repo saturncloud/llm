@@ -8,7 +8,7 @@
 
         <form action="" id="question_form">
             <label for="question">Question:</label>
-            <input type="text" id="question" name="text">
+            <input type="text" id="question" name="question">
             <label for="section">Section:</label>
             <select id="section" name="section">
                 <option value="concepts">Concepts</option>
@@ -58,7 +58,7 @@
                 const answerCell = row.insertCell(1);
                 const sourceCell = row.insertCell(2);
                 const scoreCell = row.insertCell(3);
-                questionCell.innerText = data["text"];
+                questionCell.innerText = data["question"];
                 answerCell.innerText = "..."
 
                 const response = await fetch("/api/question", {

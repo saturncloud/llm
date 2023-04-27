@@ -118,11 +118,7 @@ class BertQA:
                     break
             answer_ids = answer_ids[sep_idx+1:]
 
-        # Remove any other special tokens from the answer
-        for special_id in self.tokenizer.all_special_ids:
-            answer_ids = answer_ids[answer_ids != special_id]
-
-        answer = self.tokenizer.decode(answer_ids)
+        answer = self.tokenizer.decode(answer_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
         return answer, float(batch_avg_scores[best_batch])
 
     def tokenize(

@@ -9,20 +9,8 @@
         <form action="" id="question_form">
             <label for="question">Question:</label>
             <input type="text" id="question" name="question">
-            <label for="section">Section:</label>
-            <select id="section" name="section">
-                <option value="concepts">Concepts</option>
-                <option value="using-saturn-cloud">Using Saturn Cloud</option>
-                <option value="examples">Examples</option>
-                <option value="images">Images</option>
-                <option value="best-practices">Best Practices</option>
-                <option value="administration">Administration</option>
-                <option value="troubleshooting">Troubleshooting</option>
-                <option value="enterprise">Enterprise</option>
-                <option value="security">Security</option>
-                <option value="release-notes">Release Notes</option>
-                <option value="quickstart">Quickstart</option>
-            </select>
+            <label for="dataset_name">Dataset:</label>
+            <input type="text" id="dataset_name" name="dataset_name" placeholder="(optional)">
             <br><br>
             <input type="submit" id="submit_button" value="Submit">
         </form>
@@ -61,7 +49,7 @@
                 questionCell.innerText = data["question"];
                 answerCell.innerText = "..."
 
-                const response = await fetch("/api/docs", {
+                const response = await fetch("/api/question", {
                     method: "POST",
                     headers: {"Content-Type": "application/json"},
                     body: JSON.stringify(data)

@@ -1,61 +1,13 @@
-from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple
 
 import torch
 from transformers import BatchEncoding, BertTokenizerFast, BertForQuestionAnswering
 
-from bert_qa.docs import glossary_entries, load_docs, load_glossary_entry
-
-
-@dataclass
-class Answer:
-    text: str
-    question: str
-    source: str
-    score: float
-
-    def __str__(self) -> str:
-        return self.text
-
-    def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
-
-    def print(self):
-        print(
-            f"Question: {self.question}",
-            f"\nAnswer: {self.text}",
-            f"\nSource: {self.source}",
-            f"\nScore: {self.score}\n",
-        )
-
 
 class BertQA:
     def __init__(self):
-        self.docs = load_docs()
-        self.glossary = glossary_entries()
         self.tokenizer: BertTokenizerFast = BertTokenizerFast.from_pretrained('bert-large-uncased-whole-word-masking-finetuned-squad')
         self.model: BertForQuestionAnswering = BertForQuestionAnswering.from_pretrained("bert-large-uncased-whole-word-masking-finetuned-squad")
-
-    def search_docs(self, question: str, section: Optional[str] = None, **kwargs) -> Answer:
-        sections = list(self.docs.keys())
-        if not section:
-            _, _, best_section_idx = self.best_answer(question, sections)
-            section = sections[best_section_idx]
-
-        files = list(self.docs[section].keys())
-        contexts = [self.docs[section][f] for f in files]
-        answer, score, index = self.best_answer(question, contexts, **kwargs)
-        source = files[index]
-        return Answer(answer, question, source, score)
-
-    def search_glossary(self, question: str, section: Optional[str] = None, **kwargs) -> Answer:
-        if not section:
-            _, _, best_section_idx = self.best_answer(question, self.glossary)
-            section = self.glossary[best_section_idx]
-
-        context = load_glossary_entry(section)
-        answer, score = self.answer_question(question, context, **kwargs)
-        return Answer(answer, question, section, score)
 
     def best_answer(self, question: str, contexts: List[str], **kwargs) -> Tuple[str, float, int]:
         best_score = -1e20
@@ -75,7 +27,7 @@ class BertQA:
         question: str,
         context: str,
         span_length: int = 512,
-        span_overlap: int = 128,
+        span_overlap: int = 64,
     ) -> Tuple[str, float]:
         assert span_length <= 512, "max sequence length for the BERT model is 512"
         assert span_length > span_overlap, "span_length must be greater than span_overlap"
@@ -98,7 +50,7 @@ class BertQA:
         answer_start_scores = output["start_logits"]
         answer_end_scores = output["end_logits"]
 
-        # TODO: Remove answers that are in the qusetion (check via token_type_ids)
+        # TODO: Remove answers that are in the question (check via token_type_ids)
         #       before determining best answer.
         # Best answers in each span
         batch_start_indices = torch.argmax(answer_start_scores, 1)

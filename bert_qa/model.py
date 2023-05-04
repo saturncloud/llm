@@ -1,12 +1,15 @@
 from typing import List, Optional, Tuple
 
 import torch
-from transformers import BatchEncoding, BertTokenizerFast, BertForQuestionAnswering
+from transformers import BatchEncoding, BertTokenizerFast, BertForQuestionAnswering, RobertaForQuestionAnswering, RobertaTokenizerFast
 
 
 class BertQA:
     def __init__(self):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        # self.tokenizer: RobertaTokenizerFast = RobertaTokenizerFast.from_pretrained("deepset/tinyroberta-squad2")
+        # self.model: RobertaForQuestionAnswering = RobertaForQuestionAnswering.from_pretrained("deepset/tinyroberta-squad2").to(self.device)
+
         self.tokenizer: BertTokenizerFast = BertTokenizerFast.from_pretrained('bert-large-uncased-whole-word-masking-finetuned-squad')
         self.model: BertForQuestionAnswering = BertForQuestionAnswering.from_pretrained("bert-large-uncased-whole-word-masking-finetuned-squad").to(self.device)
 
@@ -49,7 +52,7 @@ class BertQA:
         ).to(self.device)
 
         input_ids = inputs.input_ids.to(self.device)
-        token_type_ids = inputs.token_type_ids.to(self.device)
+        token_type_ids = inputs.token_type_ids.to(self.device) if hasattr(inputs, "token_type_ids") else None
         attention_mask = inputs.attention_mask.to(self.device)
 
         # Run model

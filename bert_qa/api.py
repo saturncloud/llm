@@ -40,7 +40,8 @@ def index():
 def post_query(body: QuestionBody):
     results = retriever.search(**asdict(body))
     answer_text, score, i = bert_qa.best_answer(body.question, [r.text for r in results])
-    answer = Answer(answer_text, body.question, score, results[i].source)
+    source = results[i].source if i >=0 else ""
+    answer = Answer(answer_text, body.question, score, source)
     return JSONResponse(asdict(answer))
 
 

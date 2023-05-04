@@ -1,11 +1,10 @@
 import asyncio
-from dataclasses import asdict, dataclass
-import os
+from dataclasses import asdict
 from typing import Any, Dict, List, Optional, Set, Tuple
-from requests import Session
 from urllib.parse import urljoin, urlparse
 
-from aiohttp import ClientSession
+from aiohttp import ClientSession, ClientTimeout
+from aiohttp.client_exceptions import ClientConnectionError
 from bs4 import BeautifulSoup
 
 from bert_qa.retriever import Content
@@ -16,12 +15,14 @@ class Crawler:
         self,
         root_url: str,
         max_depth: int = 5,
+        include_root: bool = True,
         include_below_root: bool = False,
         include_external: bool = False,
         headers: Optional[Dict[str, str]] = None,
     ):
         self.root_url = root_url
         self.max_depth = max_depth
+        self.include_root = include_root
         self.include_below_root = include_below_root
         self.include_external = include_external
         self.headers = headers if headers else {}
@@ -29,50 +30,45 @@ class Crawler:
         self.pages: List[Content] = []
         self.urls: Set[str] = set()
 
-    async def crawl(self):
-        async with ClientSession(headers=self.headers) as s:
-            await self.fetch_docs(s, self.root_url)
+    async def run(self):
+        async with ClientSession(headers=self.headers, timeout=ClientTimeout(30)) as s:
+            await self.fetch_content(s, self.root_url)
 
-    def sync_crawl(self):
-        with Session() as s:
-            s.headers.update(self.headers)
-            self.sync_fetch_docs(s, self.root_url)
-
-    async def fetch_docs(self, s: ClientSession, url: str, depth: int = 1):
-        if url in self.urls:
-            return
+    async def fetch_content(self, s: ClientSession, url: str, depth: int = 1, retries: int = 3):
         self.urls.add(url)
 
         # Get content from URL
-        async with s.get(url) as response:
-            if not response.ok:
-                return
-            raw_text = await response.text()
+        for i in range(retries):
+            try:
+                async with s.get(url) as response:
+                    if not response.ok:
+                        return
+                    # TODO: More content types?
+                    if response.content_type != "text/html":
+                        return
+                    raw_text = await response.text()
+                    break
+            except ClientConnectionError as e:
+                if i+1 >= retries:
+                    raise e
+                # Simple backoff
+                await asyncio.sleep(i)
+            except asyncio.exceptions.TimeoutError as e:
+                print("Timeout on", url)
+                if i+1 >= retries:
+                    raise e
+                await asyncio.sleep(i)
 
         extract_links = depth + 1 <= self.max_depth
         content, new_urls = self.parse_content(url, raw_text, extract_links=extract_links)
-        self.pages.append(content)
+        if self.include_root or url != self.root_url:
+            self.pages.append(content)
 
         new_scrapes = []
         for url in new_urls:
-            new_scrapes.append(self.fetch_docs(s, url, depth + 1))
+            if url not in self.urls:
+                new_scrapes.append(self.fetch_content(s, url, depth + 1))
         await asyncio.gather(*new_scrapes)
-
-    def sync_fetch_docs(self, s: Session, url: str, depth: int = 1):
-        if url in self.urls:
-            return
-        self.urls.add(url)
-
-        response = s.get(url)
-        if not response.ok:
-            return
-
-        extract_links = depth + 1 <= self.max_depth
-        content, new_urls = self.parse_content(url, response.text, extract_links)
-        self.pages.append(content)
-
-        for url in new_urls:
-            self.sync_fetch_docs(s, url, depth + 1)
 
     def parse_content(self, source: str, raw_text: str, extract_links: bool = True) -> Tuple[Content, List[str]]:
         # Parse HTML to text
@@ -93,8 +89,10 @@ class Crawler:
                 parsed = urlparse(href)
                 if parsed.scheme and parsed.scheme not in {"http", "https"}:
                     continue
+                # Strip anchor tags
+                href = href.split("#")[0]
 
-                new_url = urljoin(link_base, link["href"])
+                new_url = urljoin(link_base, href)
                 is_external = not new_url.startswith(base_url)
                 is_below_root = not is_external and not new_url.startswith(self.root_url)
                 if not self.include_external and is_external:
@@ -104,3 +102,6 @@ class Crawler:
 
                 new_urls.append(new_url)
         return content, new_urls
+
+    def dump_content(self) -> List[Dict[str, Any]]:
+        return [asdict(c) for c in self.pages]

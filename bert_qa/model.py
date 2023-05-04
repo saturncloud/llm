@@ -6,8 +6,9 @@ from transformers import BatchEncoding, BertTokenizerFast, BertForQuestionAnswer
 
 class BertQA:
     def __init__(self):
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.tokenizer: BertTokenizerFast = BertTokenizerFast.from_pretrained('bert-large-uncased-whole-word-masking-finetuned-squad')
-        self.model: BertForQuestionAnswering = BertForQuestionAnswering.from_pretrained("bert-large-uncased-whole-word-masking-finetuned-squad")
+        self.model: BertForQuestionAnswering = BertForQuestionAnswering.from_pretrained("bert-large-uncased-whole-word-masking-finetuned-squad").to(self.device)
 
     def best_answer(self, question: str, contexts: List[str], **kwargs) -> Tuple[str, float, int]:
         best_score = -1e20
@@ -43,7 +44,7 @@ class BertQA:
             truncation="only_second",
             stride=span_overlap,
             return_overflowing_tokens=True,
-        )
+        ).to(self.device)
 
         # Run model
         output = self.model(inputs.input_ids, token_type_ids=inputs.token_type_ids)
@@ -57,10 +58,10 @@ class BertQA:
         batch_end_indices = torch.argmax(answer_end_scores, 1)
         batch_start_scores = torch.tensor([
             scores[batch_start_indices[i]] for i, scores in enumerate(answer_start_scores)
-        ])
+        ], device=self.device)
         batch_end_scores = torch.tensor([
             scores[batch_end_indices[i]] for i, scores in enumerate(answer_end_scores)
-        ])
+        ], device=self.device)
 
         # Combine start and end scores to get an approximation for the whole answer
         # Weighted average favoring start score
@@ -70,7 +71,7 @@ class BertQA:
         # Retrieve token IDs for the answer
         start_index = batch_start_indices[best_batch]
         end_index = batch_end_indices[best_batch]
-        answer_ids = inputs.input_ids[best_batch, start_index:end_index+1]
+        answer_ids = inputs.input_ids[best_batch, start_index:end_index+1].cpu()
 
         # If answer starts with CLS token, then the question is included. Remove it.
         if len(answer_ids) > 0 and answer_ids[0] == self.tokenizer.cls_token_id:

@@ -1,17 +1,18 @@
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 import os
-from typing import Any, Dict, List, Optional
-from numpy import indices
+from typing import Dict, List, Optional
 
 import torch
 from datasets import Dataset
 from transformers import AutoModel, AutoTokenizer, PreTrainedModel, PreTrainedTokenizer
+from transformers import DPRContextEncoder, DPRContextEncoderTokenizerFast, DPRQuestionEncoder, DPRQuestionEncoderTokenizerFast
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+from bert_qa.data import INDEX_NAME, data_path, index_path, load_data
 
 CONTEXTS_DIR = os.getenv("CONTEXTS_DIR", "/data/contexts")
 DATA_FILE = "data.jsonl"
 INDEX_FILE = "index.faiss"
-INDEX_NAME = "embedding"
 
 
 @dataclass
@@ -19,9 +20,6 @@ class Content:
     source: str
     text: str
     title: Optional[str] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
 
 
 @dataclass
@@ -35,15 +33,26 @@ class SearchResult(Content):
 
 
 class Retriever:
-    def __init__(self, model_name: str = "sentence-transformers/multi-qa-mpnet-base-dot-v1"):
+    def __init__(self, model_name: str = "sentence-transformers/multi-qa-mpnet-base-dot-v1", load_datasets: bool = True):
+
+        # self.c_tokenizer = DPRContextEncoderTokenizerFast.from_pretrained("facebook/dpr-ctx_encoder-multiset-base")
+        # self.q_tokenizer = DPRQuestionEncoderTokenizerFast.from_pretrained("facebook/dpr-question_encoder-multiset-base")
+        # self.c_model = DPRContextEncoder.from_pretrained("facebook/dpr-ctx_encoder-multiset-base")
+        # self.q_model = DPRQuestionEncoder.from_pretrained("facebook/dpr-question_encoder-multiset-base")
+
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+
         self.context = []
         self.tokenizer: PreTrainedTokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model: PreTrainedModel = AutoModel.from_pretrained(
             model_name, torch_dtype=torch.float32
-        )
+        ).to(self.device)
         self.datasets: Dict[str, Dataset] = {}
-        for dir in os.listdir(CONTEXTS_DIR):
-            self.load_dataset(dir)
+        if load_datasets:
+            for dir in os.listdir(CONTEXTS_DIR):
+                dataset = load_data(dir)
+                self.datasets[dir] = dataset
 
     def search(self, question: str, dataset_name: Optional[str] = None, top_k: int = 5) -> List[SearchResult]:
         if dataset_name:
@@ -61,7 +70,7 @@ class Retriever:
     def _search(self, question: str, dataset_name: str, top_k: int = 5) -> List[SearchResult]:
         dataset = self.datasets[dataset_name]
         encoding = self.cls_embedding(question)
-        results = dataset.search(INDEX_NAME, encoding.numpy(), k=top_k)
+        results = dataset.search(INDEX_NAME, encoding.cpu().numpy(), k=top_k)
         search_results = []
         for i, score in zip(results.indices, results.scores):
             context = dataset[int(i)]
@@ -69,46 +78,14 @@ class Retriever:
             search_results.append(search_result)
         return search_results
 
+    def add_dataset(self, name: str, dataset: Dataset):
+        dataset = self.tokenize_dataset(dataset)
+        dataset = self.embed_dataset(dataset)
 
-    def load_dataset(self,  name: str) -> Dataset:
-        data_path = self.data_path(name)
-        index_path = self.index_path(name)
-        dataset = Dataset.from_json(data_path)
-        if os.path.isfile(index_path):
-            dataset.load_faiss_index(INDEX_NAME, index_path)
-        else:
-            dataset.add_faiss_index(INDEX_NAME)
-            dataset.save_faiss_index(INDEX_NAME, index_path)
-        self.datasets[name] = dataset
-        return dataset
-
-    def add_dataset(self, dataset_name: str, content_list: List[Content]) -> Dataset:
-        chunks = []
-        for content in content_list:
-            contexts = self.get_contexts(content)
-            chunks.extend([asdict(c) for c in contexts])
-
-        dataset = Dataset.from_list(chunks)
-        data_path = self.data_path(dataset_name)
-        index_path = self.index_path(dataset_name)
-        dataset.to_json(data_path)
+        dataset.to_json(data_path(name))
         dataset.add_faiss_index(INDEX_NAME)
-        dataset.save_faiss_index(INDEX_NAME, index_path)
-        self.datasets[dataset_name] = dataset
-        return dataset
-
-    def get_contexts(self, content: Content) -> List[ContextChunk]:
-        split = self.split_context(content.text)
-        contexts: List[ContextChunk] = []
-        for text_chunk in split:
-            embedding = self.cls_embedding(text_chunk)
-            contexts.append(ContextChunk(
-                text=text_chunk,
-                source=content.source,
-                title=content.title,
-                embedding=embedding.tolist()
-            ))
-        return contexts
+        dataset.save_faiss_index(INDEX_NAME, index_path(name))
+        self.datasets[name] = dataset
 
     def split_context(self, context: str, max_length: int = 384, overlap: int = 64) -> List[str]:
         def _token_length(text: str) -> int:
@@ -125,11 +102,58 @@ class Retriever:
     def cls_embedding(self, text: str) -> torch.Tensor:
         inputs = self.tokenizer(text, padding=True, truncation=True, return_tensors="pt")
         with torch.no_grad():
-            encoding = self.model(inputs.input_ids)
+            encoding = self.model(inputs.input_ids.to(self.device))
         return encoding.last_hidden_state[0, 0]
 
-    def data_path(self, name: str) -> str:
-        return os.path.join(CONTEXTS_DIR, name, DATA_FILE)
+    def tokenize_dataset(self, dataset: Dataset, max_length: int = 256, overlap_stride: int = 32, batch_size: int = 1000) -> Dataset:
+        def _tokenize(batch: Dict[str, List]) -> Dict:
+            encoding = self.tokenizer(
+                batch["text"],
+                padding=True,
+                truncation=True,
+                max_length=max_length,
+                stride=overlap_stride,
+                return_overflowing_tokens=True,
+                return_attention_mask=True,
+                return_offsets_mapping=True,
+                return_tensors="pt",
+            )
 
-    def index_path(self, name: str) -> str:
-        return os.path.join(CONTEXTS_DIR, name, INDEX_FILE)
+            # There may be more output rows than input rows. Map data in the old rows to the new rows.
+            overflow_mapping = encoding.overflow_to_sample_mapping
+            batch_overflowed: Dict[str, List] = {}
+            for key, val in batch.items():
+                if key == "text":
+                    new_val = [
+                        self.tokenizer.decode(
+                            input_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True
+                        )
+                        for input_ids in encoding.input_ids
+                    ]
+                else:
+                    new_val = []
+                    for i in overflow_mapping:
+                        new_val.append(val[i])
+                batch_overflowed[key] = new_val
+
+            return {
+                **batch_overflowed,
+                "input_ids": encoding.input_ids,
+                "attention_mask": encoding.attention_mask,
+                "offset_mapping": encoding.offset_mapping,
+            }
+
+        return dataset.map(_tokenize, batched=True, batch_size=batch_size)
+
+    def embed_dataset(self, dataset: Dataset, batch_size: int = 100) -> Dataset:
+        def _embedding(batch: Dict[str, List]) -> Dict:
+            with torch.no_grad():
+                mask = batch.get("attention_mask")
+                input_ids = torch.tensor(batch["input_ids"]).to(self.device)
+                attention_mask = torch.tensor(mask).to(self.device) if mask else None
+                output = self.model(input_ids, attention_mask=attention_mask)
+            return {
+                **batch,
+                "embedding": output.last_hidden_state[:, 0].cpu()
+            }
+        return dataset.map(_embedding, batched=True, batch_size=batch_size)

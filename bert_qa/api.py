@@ -1,18 +1,14 @@
 from dataclasses import asdict, dataclass
-from hashlib import md5
-import json
-import os
 import pathlib
 from typing import Optional
 
-from datasets import Dataset
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, FileResponse
 import uvicorn
 
-from bert_qa.retriever import CONTEXTS_DIR, ContextChunk, Retriever
-from bert_qa.scrape import Crawler
+from bert_qa.retriever import Retriever
 from bert_qa.model import BertQA
+from bert_qa.jobs.scrape import scrape_dataset
 
 
 app = FastAPI()
@@ -59,11 +55,7 @@ class ScrapeBody:
 
 @app.post("/api/scrape")
 async def post_scrape_url(body: ScrapeBody):
-    crawler = Crawler(
-        body.url, body.max_depth, body.include_below_root, body.include_external
-    )
-    await crawler.crawl()
-    retriever.add_dataset(body.name, crawler.pages)
+    scrape_dataset(**asdict(body))
 
 
 if __name__ == "__main__":

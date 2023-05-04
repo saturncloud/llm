@@ -51,15 +51,10 @@ class Crawler:
                         return
                     raw_text = await response.text()
                     break
-            except ClientConnectionError as e:
+            except (ClientConnectionError, asyncio.exceptions.TimeoutError) as e:
                 if i+1 >= retries:
                     raise e
                 # Simple backoff
-                await asyncio.sleep(i)
-            except asyncio.exceptions.TimeoutError as e:
-                print("Timeout on", url)
-                if i+1 >= retries:
-                    raise e
                 await asyncio.sleep(i)
 
         extract_links = depth + 1 <= self.max_depth

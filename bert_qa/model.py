@@ -91,7 +91,7 @@ class BertQA:
 
         # Extract answer from the original text rather than decoding IDs for better readability
         answer_start_offset = int(inputs.offset_mapping[best_batch, start_index][0])
-        answer_end_offset = int(inputs.offset_mapping[best_batch, end_index+1][-1])
+        answer_end_offset = int(inputs.offset_mapping[best_batch, end_index][-1])
         answer = context[answer_start_offset:answer_end_offset]
 
         return answer, float(batch_avg_scores[best_batch])

@@ -37,6 +37,7 @@ if __name__ == "__main__":
     parser.add_argument("--max-depth", default=5, help="Maximum depth of URL links to follow")
     parser.add_argument("--include-below-root", action="store_true", help="Follow links that are below the given URL path")
     parser.add_argument("--include-external", action="store_true", help="Follow links to external sites")
+    parser.add_argument("-e", "--exclude-regex", help="Exclude scraped URLs by regex pattern")
     args = parser.parse_args()
 
     loop = asyncio.get_event_loop()

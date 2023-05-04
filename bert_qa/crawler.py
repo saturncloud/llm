@@ -1,5 +1,6 @@
 import asyncio
 from dataclasses import asdict
+import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import urljoin, urlparse
 
@@ -18,6 +19,7 @@ class Crawler:
         include_root: bool = True,
         include_below_root: bool = False,
         include_external: bool = False,
+        exclude_regex: Optional[str] = None,
         headers: Optional[Dict[str, str]] = None,
     ):
         self.root_url = root_url
@@ -25,6 +27,7 @@ class Crawler:
         self.include_root = include_root
         self.include_below_root = include_below_root
         self.include_external = include_external
+        self.exclude_re: Optional[re.Pattern] = re.compile(exclude_regex) if exclude_regex else None
         self.headers = headers if headers else {}
 
         self.pages: List[Content] = []
@@ -83,7 +86,6 @@ class Crawler:
 
         new_urls = []
         if extract_links:
-            base_url = urljoin(self.root_url, "/")
             for link in soup.find_all("a", href=True):
                 href = link["href"]
                 parsed = urlparse(href)
@@ -93,15 +95,21 @@ class Crawler:
                 href = href.split("#")[0]
 
                 new_url = urljoin(link_base, href)
-                is_external = not new_url.startswith(base_url)
-                is_below_root = not is_external and not new_url.startswith(self.root_url)
-                if not self.include_external and is_external:
-                    continue
-                elif not self.include_below_root and is_below_root:
-                    continue
-
-                new_urls.append(new_url)
+                if self.is_valid_url(new_url):
+                    new_urls.append(new_url)
         return content, new_urls
+
+    def is_valid_url(self, url: str) -> bool:
+        base_url = urljoin(self.root_url, "/")
+        is_external = not url.startswith(base_url)
+        is_below_root = not is_external and not url.startswith(self.root_url)
+        if not self.include_external and is_external:
+            return False
+        if not self.include_below_root and is_below_root:
+            return False
+        if self.exclude_re and self.exclude_re.match(url):
+            return False
+        return True
 
     def dump_content(self) -> List[Dict[str, Any]]:
         return [asdict(c) for c in self.pages]

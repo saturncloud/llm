@@ -6,7 +6,6 @@ import torch
 from datasets import Dataset
 from transformers import AutoModel, AutoTokenizer, PreTrainedModel, PreTrainedTokenizer
 from transformers import DPRContextEncoder, DPRContextEncoderTokenizerFast, DPRQuestionEncoder, DPRQuestionEncoderTokenizerFast
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 from bert_qa.data import INDEX_NAME, data_path, index_path, load_data
 
@@ -33,21 +32,14 @@ class SearchResult(Content):
 
 
 class Retriever:
-    def __init__(self, model_name: str = "sentence-transformers/multi-qa-mpnet-base-dot-v1", load_datasets: bool = True):
-
-        # self.c_tokenizer = DPRContextEncoderTokenizerFast.from_pretrained("facebook/dpr-ctx_encoder-multiset-base")
-        # self.q_tokenizer = DPRQuestionEncoderTokenizerFast.from_pretrained("facebook/dpr-question_encoder-multiset-base")
-        # self.c_model = DPRContextEncoder.from_pretrained("facebook/dpr-ctx_encoder-multiset-base")
-        # self.q_model = DPRQuestionEncoder.from_pretrained("facebook/dpr-question_encoder-multiset-base")
-
+    def __init__(self, load_datasets: bool = True):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
+        self.c_tokenizer: DPRContextEncoderTokenizerFast = DPRContextEncoderTokenizerFast.from_pretrained("facebook/dpr-ctx_encoder-multiset-base")
+        self.q_tokenizer: DPRQuestionEncoderTokenizerFast = DPRQuestionEncoderTokenizerFast.from_pretrained("facebook/dpr-question_encoder-multiset-base")
+        self.c_model: DPRContextEncoder = DPRContextEncoder.from_pretrained("facebook/dpr-ctx_encoder-multiset-base").to(self.device)
+        self.q_model: DPRQuestionEncoder = DPRQuestionEncoder.from_pretrained("facebook/dpr-question_encoder-multiset-base").to(self.device)
 
-        self.context = []
-        self.tokenizer: PreTrainedTokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model: PreTrainedModel = AutoModel.from_pretrained(
-            model_name, torch_dtype=torch.float32
-        ).to(self.device)
         self.datasets: Dict[str, Dataset] = {}
         if load_datasets:
             for dir in os.listdir(CONTEXTS_DIR):
@@ -69,8 +61,8 @@ class Retriever:
 
     def _search(self, question: str, dataset_name: str, top_k: int = 5) -> List[SearchResult]:
         dataset = self.datasets[dataset_name]
-        encoding = self.cls_embedding(question)
-        results = dataset.search(INDEX_NAME, encoding.cpu().numpy(), k=top_k)
+        embedding = self.question_embedding(question)
+        results = dataset.search(INDEX_NAME, embedding.cpu().numpy(), k=top_k)
         search_results = []
         for i, score in zip(results.indices, results.scores):
             context = dataset[int(i)]
@@ -87,27 +79,17 @@ class Retriever:
         dataset.save_faiss_index(INDEX_NAME, index_path(name))
         self.datasets[name] = dataset
 
-    def split_context(self, context: str, max_length: int = 384, overlap: int = 64) -> List[str]:
-        def _token_length(text: str) -> int:
-            return len(self.tokenizer.encode(text, padding=False, truncation=False, verbose=False))
-
-        splitter = RecursiveCharacterTextSplitter(
-            separators=["\n\n", "\n", " ", ""],
-            chunk_size=max_length,
-            chunk_overlap=overlap,
-            length_function=_token_length,
-        )
-        return splitter.split_text(context)
-
-    def cls_embedding(self, text: str) -> torch.Tensor:
-        inputs = self.tokenizer(text, padding=True, truncation=True, return_tensors="pt")
+    def question_embedding(self, text: str) -> torch.Tensor:
+        inputs = self.q_tokenizer(
+            text, padding=True, truncation=False, verbose=False, return_tensors="pt"
+        ).to(self.device)
         with torch.no_grad():
-            encoding = self.model(inputs.input_ids.to(self.device))
-        return encoding.last_hidden_state[0, 0]
+            encoding = self.q_model(inputs.input_ids, attention_mask=inputs.attention_mask)
+        return encoding.pooler_output[0]
 
     def tokenize_dataset(self, dataset: Dataset, max_length: int = 256, overlap_stride: int = 32, batch_size: int = 1000) -> Dataset:
         def _tokenize(batch: Dict[str, List]) -> Dict:
-            encoding = self.tokenizer(
+            encoding = self.c_tokenizer(
                 batch["text"],
                 padding=True,
                 truncation=True,
@@ -125,7 +107,7 @@ class Retriever:
             for key, val in batch.items():
                 if key == "text":
                     new_val = [
-                        self.tokenizer.decode(
+                        self.c_tokenizer.decode(
                             input_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True
                         )
                         for input_ids in encoding.input_ids
@@ -151,9 +133,9 @@ class Retriever:
                 mask = batch.get("attention_mask")
                 input_ids = torch.tensor(batch["input_ids"]).to(self.device)
                 attention_mask = torch.tensor(mask).to(self.device) if mask else None
-                output = self.model(input_ids, attention_mask=attention_mask)
+                output = self.c_model(input_ids, attention_mask=attention_mask)
             return {
                 **batch,
-                "embedding": output.last_hidden_state[:, 0].cpu()
+                "embedding": output.pooler_output.cpu()
             }
         return dataset.map(_embedding, batched=True, batch_size=batch_size)

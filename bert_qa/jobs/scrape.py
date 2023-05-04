@@ -25,9 +25,7 @@ async def scrape_dataset(url: str, name: Optional[str] = None, **crawler_kwargs)
 
     print("Crawling URLs")
     await crawler.run()
-    raw_dataset = Dataset.from_list(crawler.dump_content())
-    raw_dataset.to_json(data_path(name, raw=True))
-    retriever.add_dataset(name, raw_dataset)
+    retriever.add_dataset(name, crawler.pages)
 
 
 if __name__ == "__main__":

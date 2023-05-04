@@ -10,7 +10,7 @@ class BertQA:
         # self.tokenizer: RobertaTokenizerFast = RobertaTokenizerFast.from_pretrained("deepset/tinyroberta-squad2")
         # self.model: RobertaForQuestionAnswering = RobertaForQuestionAnswering.from_pretrained("deepset/tinyroberta-squad2").to(self.device)
 
-        self.tokenizer: BertTokenizerFast = BertTokenizerFast.from_pretrained('bert-large-uncased-whole-word-masking-finetuned-squad')
+        self.tokenizer: BertTokenizerFast = BertTokenizerFast.from_pretrained("bert-large-uncased-whole-word-masking-finetuned-squad")
         self.model: BertForQuestionAnswering = BertForQuestionAnswering.from_pretrained("bert-large-uncased-whole-word-masking-finetuned-squad").to(self.device)
 
     def best_answer(self, question: str, contexts: List[str], **kwargs) -> Tuple[str, float, int]:

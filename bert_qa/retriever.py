@@ -1,17 +1,20 @@
-from dataclasses import dataclass, field
-import os
-from typing import Dict, List, Optional
+from dataclasses import asdict, dataclass
+from typing import Dict, List, Optional, Type
 
 import torch
 from datasets import Dataset
-from transformers import MPNetModel, MPNetTokenizerFast, BertModel, BertTokenizerFast
-from transformers import DPRContextEncoder, DPRContextEncoderTokenizerFast, DPRQuestionEncoder, DPRQuestionEncoderTokenizerFast
+from transformers import AutoModel, AutoTokenizer, PreTrainedTokenizerFast, PreTrainedModel
 
-from bert_qa.data import INDEX_NAME, data_path, index_path, load_data
+from bert_qa.data import INDEXED_COLUMN, load_model_datasets, save_data
 
-CONTEXTS_DIR = os.getenv("CONTEXTS_DIR", "/data/contexts")
-DATA_FILE = "data.jsonl"
-INDEX_FILE = "index.faiss"
+# Other models to try:
+# - context: sentence-transformers/facebook-dpr-ctx_encoder-single-nq-base
+#   question: sentence-transformers/facebook-dpr-question_encoder-single-nq-base
+# - context: facebook/dpr-ctx_encoder-multiset-base
+#   question: facebook/dpr-question_encoder-multiset-base
+
+DEFAULT_CONTEXT_MODEL = "sentence-transformers/multi-qa-mpnet-base-dot-v1"
+DEFAULT_QUESTION_MODEL = None
 
 
 @dataclass
@@ -22,39 +25,48 @@ class Content:
 
 
 @dataclass
-class ContextChunk(Content):
-    embedding: List[float] = field(default_factory=list)
-
-
-@dataclass
 class SearchResult(Content):
     score: float = 0.0
 
 
 class Retriever:
-    def __init__(self, load_datasets: bool = True):
+    c_tokenizer: PreTrainedTokenizerFast
+    c_model: PreTrainedModel
+    q_tokenizer: PreTrainedTokenizerFast
+    q_model: PreTrainedModel
+
+    def __init__(
+        self,
+        context_model: str = DEFAULT_CONTEXT_MODEL,
+        question_model: Optional[str] = DEFAULT_QUESTION_MODEL,
+        model_cls: Type[PreTrainedModel] = AutoModel,
+        tokenizer_cls: Type[PreTrainedTokenizerFast] = AutoTokenizer,
+        load_datasets: bool = True,
+    ):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        self.c_tokenizer = MPNetTokenizerFast.from_pretrained("sentence-transformers/multi-qa-mpnet-base-dot-v1")
-        self.c_model = MPNetModel.from_pretrained("sentence-transformers/multi-qa-mpnet-base-dot-v1").to(self.device)
-        self.q_tokenizer = self.c_tokenizer
-        self.q_model = self.c_model
-
-        # self.c_tokenizer = BertTokenizerFast.from_pretrained("sentence-transformers/facebook-dpr-ctx_encoder-single-nq-base")
-        # self.q_tokenizer = BertTokenizerFast.from_pretrained("sentence-transformers/facebook-dpr-question_encoder-single-nq-base")
-        # self.c_model = BertModel.from_pretrained("sentence-transformers/facebook-dpr-ctx_encoder-single-nq-base").to(self.device)
-        # self.q_model = BertModel.from_pretrained("sentence-transformers/facebook-dpr-question_encoder-single-nq-base").to(self.device)
-
-        # self.c_tokenizer: DPRContextEncoderTokenizerFast = DPRContextEncoderTokenizerFast.from_pretrained("facebook/dpr-ctx_encoder-multiset-base")
-        # self.q_tokenizer: DPRQuestionEncoderTokenizerFast = DPRQuestionEncoderTokenizerFast.from_pretrained("facebook/dpr-question_encoder-multiset-base")
-        # self.c_model: DPRContextEncoder = DPRContextEncoder.from_pretrained("facebook/dpr-ctx_encoder-multiset-base").to(self.device)
-        # self.q_model: DPRQuestionEncoder = DPRQuestionEncoder.from_pretrained("facebook/dpr-question_encoder-multiset-base").to(self.device)
+        self.c_tokenizer = tokenizer_cls.from_pretrained(context_model)
+        self.c_model = model_cls.from_pretrained(context_model).to(self.device)
+        if question_model:
+            self.q_tokenizer = tokenizer_cls.from_pretrained(question_model)
+            self.q_model = model_cls.from_pretrained(question_model)
+        else:
+            # Same model/tokenizer for context and question
+            self.q_tokenizer = self.c_tokenizer
+            self.q_model = self.c_model
 
         self.datasets: Dict[str, Dataset] = {}
         if load_datasets:
-            for dir in os.listdir(CONTEXTS_DIR):
-                dataset = load_data(dir)
-                self.datasets[dir] = dataset
+            for name, dataset in load_model_datasets(self.context_model_name):
+                self.datasets[name] = dataset
+
+    @property
+    def context_model_name(self) -> str:
+        return self.c_model.name_or_path.replace("/", "-").strip("-")
+
+    @property
+    def question_model_name(self) -> str:
+        return self.q_model.name_or_path.replace("/", "-").strip("-")
 
     def search(self, question: str, dataset_name: Optional[str] = None, top_k: int = 5) -> List[SearchResult]:
         if dataset_name:
@@ -72,7 +84,7 @@ class Retriever:
     def _search(self, question: str, dataset_name: str, top_k: int = 5) -> List[SearchResult]:
         dataset = self.datasets[dataset_name]
         embedding = self.question_embedding(question)
-        results = dataset.search(INDEX_NAME, embedding.cpu().numpy(), k=top_k)
+        results = dataset.search(INDEXED_COLUMN, embedding.cpu().numpy(), k=top_k)
         search_results = []
         for i, score in zip(results.indices, results.scores):
             context = dataset[int(i)]
@@ -80,13 +92,15 @@ class Retriever:
             search_results.append(search_result)
         return search_results
 
-    def add_dataset(self, name: str, dataset: Dataset):
+    def add_dataset(self, name: str, data: List[Content]):
+        dataset = Dataset.from_list([asdict(c) for c in data])
+        save_data(dataset, name)
+
         dataset = self.tokenize_dataset(dataset)
         dataset = self.embed_dataset(dataset)
+        dataset.add_faiss_index(INDEXED_COLUMN)
+        save_data(dataset, name, self.context_model_name)
 
-        dataset.to_json(data_path(name))
-        dataset.add_faiss_index(INDEX_NAME)
-        dataset.save_faiss_index(INDEX_NAME, index_path(name))
         self.datasets[name] = dataset
 
     def question_embedding(self, text: str) -> torch.Tensor:

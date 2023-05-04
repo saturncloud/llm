@@ -1,17 +1,30 @@
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Type, Union
 
 import torch
-from transformers import BatchEncoding, BertTokenizerFast, BertForQuestionAnswering, RobertaForQuestionAnswering, RobertaTokenizerFast
+from transformers import AutoModelForQuestionAnswering, AutoTokenizer, BatchEncoding, PreTrainedTokenizerFast, PreTrainedModel
+
+# Other models to try:
+# - deepset/roberta-large-squad2
+# - deepset/xlm-roberta-large-squad2
+# - deepset/tinyroberta-squad2
+# - microsoft/layoutlmv2-large-uncased (or base)
+
+DEFAULT_MODEL = "bert-large-uncased-whole-word-masking-finetuned-squad"
 
 
 class BertQA:
-    def __init__(self):
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        # self.tokenizer: RobertaTokenizerFast = RobertaTokenizerFast.from_pretrained("deepset/tinyroberta-squad2")
-        # self.model: RobertaForQuestionAnswering = RobertaForQuestionAnswering.from_pretrained("deepset/tinyroberta-squad2").to(self.device)
+    model: PreTrainedModel
+    tokenizer: PreTrainedTokenizerFast
 
-        self.tokenizer: BertTokenizerFast = BertTokenizerFast.from_pretrained("bert-large-uncased-whole-word-masking-finetuned-squad")
-        self.model: BertForQuestionAnswering = BertForQuestionAnswering.from_pretrained("bert-large-uncased-whole-word-masking-finetuned-squad").to(self.device)
+    def __init__(
+        self,
+        model: str = DEFAULT_MODEL,
+        model_cls: Union[Type[PreTrainedModel], Type[AutoModelForQuestionAnswering]] = AutoModelForQuestionAnswering,
+        tokenizer_cls: Union[Type[PreTrainedTokenizerFast], Type[AutoTokenizer]] = AutoTokenizer,
+    ):
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.tokenizer = tokenizer_cls.from_pretrained(model)
+        self.model = model_cls.from_pretrained(model).to(self.device)
 
     def best_answer(self, question: str, contexts: List[str], **kwargs) -> Tuple[str, float, int]:
         best_score = -1e20

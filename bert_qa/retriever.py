@@ -1,5 +1,5 @@
 from dataclasses import asdict, dataclass
-from typing import Dict, List, Optional, Type
+from typing import Dict, List, Optional, Type, Union
 
 import torch
 from datasets import Dataset
@@ -8,6 +8,7 @@ from transformers import AutoModel, AutoTokenizer, PreTrainedTokenizerFast, PreT
 from bert_qa.data import INDEXED_COLUMN, load_model_datasets, save_data
 
 # Other models to try:
+# - context: sentence-transformers/all-mpnet-base-v2
 # - context: sentence-transformers/facebook-dpr-ctx_encoder-single-nq-base
 #   question: sentence-transformers/facebook-dpr-question_encoder-single-nq-base
 # - context: facebook/dpr-ctx_encoder-multiset-base
@@ -39,8 +40,8 @@ class Retriever:
         self,
         context_model: str = DEFAULT_CONTEXT_MODEL,
         question_model: Optional[str] = DEFAULT_QUESTION_MODEL,
-        model_cls: Type[PreTrainedModel] = AutoModel,
-        tokenizer_cls: Type[PreTrainedTokenizerFast] = AutoTokenizer,
+        model_cls: Union[Type[PreTrainedModel], Type[AutoModel]] = AutoModel,
+        tokenizer_cls: Union[Type[PreTrainedTokenizerFast], Type[AutoTokenizer]] = AutoTokenizer,
         load_datasets: bool = True,
     ):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -49,7 +50,7 @@ class Retriever:
         self.c_model = model_cls.from_pretrained(context_model).to(self.device)
         if question_model:
             self.q_tokenizer = tokenizer_cls.from_pretrained(question_model)
-            self.q_model = model_cls.from_pretrained(question_model)
+            self.q_model = model_cls.from_pretrained(question_model).to(self.device)
         else:
             # Same model/tokenizer for context and question
             self.q_tokenizer = self.c_tokenizer

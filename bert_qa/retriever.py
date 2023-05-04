@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 
 import torch
 from datasets import Dataset
-from transformers import AutoModel, AutoTokenizer, PreTrainedModel, PreTrainedTokenizer
+from transformers import MPNetModel, MPNetTokenizerFast, BertModel, BertTokenizerFast
 from transformers import DPRContextEncoder, DPRContextEncoderTokenizerFast, DPRQuestionEncoder, DPRQuestionEncoderTokenizerFast
 
 from bert_qa.data import INDEX_NAME, data_path, index_path, load_data
@@ -35,10 +35,20 @@ class Retriever:
     def __init__(self, load_datasets: bool = True):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        self.c_tokenizer: DPRContextEncoderTokenizerFast = DPRContextEncoderTokenizerFast.from_pretrained("facebook/dpr-ctx_encoder-multiset-base")
-        self.q_tokenizer: DPRQuestionEncoderTokenizerFast = DPRQuestionEncoderTokenizerFast.from_pretrained("facebook/dpr-question_encoder-multiset-base")
-        self.c_model: DPRContextEncoder = DPRContextEncoder.from_pretrained("facebook/dpr-ctx_encoder-multiset-base").to(self.device)
-        self.q_model: DPRQuestionEncoder = DPRQuestionEncoder.from_pretrained("facebook/dpr-question_encoder-multiset-base").to(self.device)
+        self.c_tokenizer = MPNetTokenizerFast.from_pretrained("sentence-transformers/multi-qa-mpnet-base-dot-v1")
+        self.c_model = MPNetModel.from_pretrained("sentence-transformers/multi-qa-mpnet-base-dot-v1").to(self.device)
+        self.q_tokenizer = self.c_tokenizer
+        self.q_model = self.c_model
+
+        # self.c_tokenizer = BertTokenizerFast.from_pretrained("sentence-transformers/facebook-dpr-ctx_encoder-single-nq-base")
+        # self.q_tokenizer = BertTokenizerFast.from_pretrained("sentence-transformers/facebook-dpr-question_encoder-single-nq-base")
+        # self.c_model = BertModel.from_pretrained("sentence-transformers/facebook-dpr-ctx_encoder-single-nq-base").to(self.device)
+        # self.q_model = BertModel.from_pretrained("sentence-transformers/facebook-dpr-question_encoder-single-nq-base").to(self.device)
+
+        # self.c_tokenizer: DPRContextEncoderTokenizerFast = DPRContextEncoderTokenizerFast.from_pretrained("facebook/dpr-ctx_encoder-multiset-base")
+        # self.q_tokenizer: DPRQuestionEncoderTokenizerFast = DPRQuestionEncoderTokenizerFast.from_pretrained("facebook/dpr-question_encoder-multiset-base")
+        # self.c_model: DPRContextEncoder = DPRContextEncoder.from_pretrained("facebook/dpr-ctx_encoder-multiset-base").to(self.device)
+        # self.q_model: DPRQuestionEncoder = DPRQuestionEncoder.from_pretrained("facebook/dpr-question_encoder-multiset-base").to(self.device)
 
         self.datasets: Dict[str, Dataset] = {}
         if load_datasets:
@@ -84,8 +94,13 @@ class Retriever:
             text, padding=True, truncation=False, verbose=False, return_tensors="pt"
         ).to(self.device)
         with torch.no_grad():
-            encoding = self.q_model(inputs.input_ids, attention_mask=inputs.attention_mask)
-        return encoding.pooler_output[0]
+            outputs = self.q_model(inputs.input_ids, attention_mask=inputs.attention_mask)
+        return self.cls_pooling(outputs)[0]
+
+    def cls_pooling(self, outputs) -> torch.Tensor:
+        if hasattr(outputs, "pooler_output"):
+            return outputs.pooler_output
+        return outputs.last_hidden_state[:, 0]
 
     def tokenize_dataset(self, dataset: Dataset, max_length: int = 256, overlap_stride: int = 32, batch_size: int = 1000) -> Dataset:
         def _tokenize(batch: Dict[str, List]) -> Dict:
@@ -103,26 +118,31 @@ class Retriever:
 
             # There may be more output rows than input rows. Map data in the old rows to the new rows.
             overflow_mapping = encoding.overflow_to_sample_mapping
+            offset_mapping = encoding.offset_mapping
             batch_overflowed: Dict[str, List] = {}
-            for key, val in batch.items():
+            for key, values in batch.items():
                 if key == "text":
-                    new_val = [
-                        self.c_tokenizer.decode(
-                            input_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True
-                        )
-                        for input_ids in encoding.input_ids
-                    ]
+                    # Extract original text by overflow and offset mappings
+                    new_val = [""] * len(overflow_mapping)
+                    for i, j in enumerate(overflow_mapping):
+                        offsets = offset_mapping[i]
+                        non_zero = torch.nonzero(offsets)
+                        first_nonzero = int(non_zero[0][0])
+                        last_nonzero = int(non_zero[-1][0])
+                        start = offsets[first_nonzero][0]
+                        end = offsets[last_nonzero][-1]
+                        new_val[i] = values[j][start:end]
                 else:
-                    new_val = []
-                    for i in overflow_mapping:
-                        new_val.append(val[i])
+                    new_val = [None] * len(overflow_mapping)
+                    for i, j in enumerate(overflow_mapping):
+                        new_val[i] = values[j]
                 batch_overflowed[key] = new_val
 
             return {
                 **batch_overflowed,
                 "input_ids": encoding.input_ids,
                 "attention_mask": encoding.attention_mask,
-                "offset_mapping": encoding.offset_mapping,
+                "offset_mapping": offset_mapping,
             }
 
         return dataset.map(_tokenize, batched=True, batch_size=batch_size)
@@ -133,9 +153,9 @@ class Retriever:
                 mask = batch.get("attention_mask")
                 input_ids = torch.tensor(batch["input_ids"]).to(self.device)
                 attention_mask = torch.tensor(mask).to(self.device) if mask else None
-                output = self.c_model(input_ids, attention_mask=attention_mask)
+                outputs = self.c_model(input_ids, attention_mask=attention_mask)
             return {
                 **batch,
-                "embedding": output.pooler_output.cpu()
+                "embedding": self.cls_pooling(outputs).cpu()
             }
         return dataset.map(_embedding, batched=True, batch_size=batch_size)

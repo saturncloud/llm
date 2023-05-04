@@ -43,16 +43,20 @@ class BertQA:
             padding=True,
             truncation="only_second",
             stride=span_overlap,
+            return_attention_mask=True,
             return_overflowing_tokens=True,
+            return_offsets_mapping=True,
         ).to(self.device)
 
+        input_ids = inputs.input_ids.to(self.device)
+        token_type_ids = inputs.token_type_ids.to(self.device)
+        attention_mask = inputs.attention_mask.to(self.device)
+
         # Run model
-        output = self.model(inputs.input_ids, token_type_ids=inputs.token_type_ids)
+        output = self.model(input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
         answer_start_scores = output["start_logits"]
         answer_end_scores = output["end_logits"]
 
-        # TODO: Remove answers that are in the question (check via token_type_ids)
-        #       before determining best answer.
         # Best answers in each span
         batch_start_indices = torch.argmax(answer_start_scores, 1)
         batch_end_indices = torch.argmax(answer_end_scores, 1)
@@ -71,7 +75,9 @@ class BertQA:
         # Retrieve token IDs for the answer
         start_index = batch_start_indices[best_batch]
         end_index = batch_end_indices[best_batch]
-        answer_ids = inputs.input_ids[best_batch, start_index:end_index+1].cpu()
+
+        # Retrieve answer_ids from inputs in CPU memory
+        answer_ids = inputs.input_ids[best_batch, start_index:end_index+1]
 
         # If answer starts with CLS token, then the question is included. Remove it.
         if len(answer_ids) > 0 and answer_ids[0] == self.tokenizer.cls_token_id:
@@ -80,9 +86,14 @@ class BertQA:
                 if id == self.tokenizer.sep_token_id:
                     sep_idx = i
                     break
+            start_index += sep_idx + 1
             answer_ids = answer_ids[sep_idx+1:]
 
-        answer = self.tokenizer.decode(answer_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+        # Extract answer from the original text rather than decoding IDs for better readability
+        answer_start_offset = int(inputs.offset_mapping[best_batch, start_index][0])
+        answer_end_offset = int(inputs.offset_mapping[best_batch, end_index+1][-1])
+        answer = context[answer_start_offset:answer_end_offset]
+
         return answer, float(batch_avg_scores[best_batch])
 
     def tokenize(

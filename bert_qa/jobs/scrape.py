@@ -29,7 +29,7 @@ async def scrape_dataset(url: str, name: Optional[str] = None, **crawler_kwargs)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser("BERT QA Scrape")
+    parser = argparse.ArgumentParser("docBERT HTML scrape")
     parser.add_argument("url", help="URL to scrape")
     parser.add_argument("-n", "--name", help="Name of the resultant dataset (parsed from URL by default)")
     parser.add_argument("--max-depth", default=5, help="Maximum depth of URL links to follow")

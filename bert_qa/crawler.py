@@ -19,7 +19,6 @@ class DocSpider(Spider):
     start_urls: List[str]
 
     custom_settings = {
-        "LOG_LEVEL": "INFO",
         "REQUEST_FINGERPRINTER_IMPLEMENTATION": "2.7",
     }
 

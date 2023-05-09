@@ -24,7 +24,7 @@ def load_data(dataset: str, model: Optional[str] = None, load_index: bool = True
         idx_path = index_path(dataset, model)
         if os.path.isfile(idx_path):
             ds.load_faiss_index(INDEXED_COLUMN, idx_path)
-        else:
+        elif INDEXED_COLUMN in ds.column_names:
             ds.add_faiss_index(INDEXED_COLUMN)
             ds.save_faiss_index(INDEXED_COLUMN, idx_path)
     return ds

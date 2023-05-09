@@ -9,7 +9,7 @@ from bert_qa.crawler import DocSpider
 from bert_qa.retriever import Retriever
 
 
-async def scrape_dataset(url: str, name: Optional[str] = None, max_depth: int = 10, **spider_kwargs) -> Dataset:
+async def scrape_dataset(url: str, name: Optional[str] = None, max_depth: int = 10, log_level: str = "INFO", **spider_kwargs) -> Dataset:
     parsed = urlparse(url)
     if parsed.hostname is None:
         raise Exception(f"Invalid URL: {url}")
@@ -29,7 +29,7 @@ async def scrape_dataset(url: str, name: Optional[str] = None, max_depth: int = 
     dataset = DocSpider.run(
         url,
         **spider_kwargs,
-        settings={"DEPTH_LIMIT": max_depth, "CONCURRENT_REQUESTS": 20},
+        settings={"DEPTH_LIMIT": max_depth, "CONCURRENT_REQUESTS": 20, "LOG_LEVEL": log_level},
     )
     retriever.add_dataset(name, dataset)
 
@@ -43,6 +43,7 @@ if __name__ == "__main__":
     parser.add_argument("--link-css", help="Only extract links from elements matching the given CSS selector")
     parser.add_argument("--text-css", help="Only extract text from elements matching the given CSS selector")
     parser.add_argument("--max-depth", default=10, type=int, help="Maximum depth of URL links to follow")
+    parser.add_argument("--log-level", default="INFO", help="Logging level")
     args = parser.parse_args()
 
     loop = asyncio.get_event_loop()

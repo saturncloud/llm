@@ -145,11 +145,15 @@ class Retriever:
                     for i, j in enumerate(overflow_mapping):
                         offsets = offset_mapping[i]
                         non_zero = torch.nonzero(offsets)
-                        first_nonzero = int(non_zero[0][0])
-                        last_nonzero = int(non_zero[-1][0])
-                        start = offsets[first_nonzero][0]
-                        end = offsets[last_nonzero][-1]
-                        new_val[i] = values[j][start:end]
+                        if len(non_zero) > 0:
+                            first_nonzero = int(non_zero[0][0])
+                            last_nonzero = int(non_zero[-1][0])
+                            start = offsets[first_nonzero][0]
+                            end = offsets[last_nonzero][-1]
+                            new_val[i] = values[j][start:end]
+                        else:
+                            # No tokens in text (probably empty)
+                            new_val[i] = values[j]
                 else:
                     new_val = [None] * len(overflow_mapping)
                     for i, j in enumerate(overflow_mapping):

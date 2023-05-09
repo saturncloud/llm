@@ -5,12 +5,11 @@ from urllib.parse import urlparse
 
 from datasets import Dataset
 
-from bert_qa.crawler import Crawler
-from bert_qa.data import data_path
+from bert_qa.crawler import DocSpider
 from bert_qa.retriever import Retriever
 
 
-async def scrape_dataset(url: str, name: Optional[str] = None, **crawler_kwargs) -> Dataset:
+async def scrape_dataset(url: str, name: Optional[str] = None, max_depth: int = 10, **spider_kwargs) -> Dataset:
     parsed = urlparse(url)
     if parsed.hostname is None:
         raise Exception(f"Invalid URL: {url}")
@@ -20,22 +19,30 @@ async def scrape_dataset(url: str, name: Optional[str] = None, **crawler_kwargs)
         name = parsed.hostname + "-" + path.replace("/", "-").lstrip("-")
         name = name.rstrip("-")
 
-    crawler = Crawler(url, **crawler_kwargs)
-    retriever = Retriever(load_datasets=False)
+    allowed_domains = spider_kwargs.get("allowed_domains")
+    if allowed_domains:
+        spider_kwargs["allowed_domains"] = []
+        for domains in allowed_domains:
+            spider_kwargs["allowed_domains"].extend(domains.split(","))
 
-    print("Crawling URLs")
-    await crawler.run()
-    retriever.add_dataset(name, crawler.pages)
+    retriever = Retriever(load_datasets=False)
+    dataset = DocSpider.run(
+        url,
+        **spider_kwargs,
+        settings={"DEPTH_LIMIT": max_depth, "CONCURRENT_REQUESTS": 20},
+    )
+    retriever.add_dataset(name, dataset)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("docBERT HTML scrape")
     parser.add_argument("url", help="URL to scrape")
     parser.add_argument("-n", "--name", help="Name of the resultant dataset (parsed from URL by default)")
-    parser.add_argument("--max-depth", default=5, help="Maximum depth of URL links to follow")
-    parser.add_argument("--include-below-root", action="store_true", help="Follow links that are below the given URL path")
-    parser.add_argument("--include-external", action="store_true", help="Follow links to external sites")
-    parser.add_argument("-e", "--exclude-regex", help="Exclude scraped URLs by regex pattern")
+    parser.add_argument("--allowed-domains", action="append", help="One or more comma separated domains that are allowed to be scraped")
+    parser.add_argument("--link-regex", help="Match URLs against regex before adding to scrape pipeline")
+    parser.add_argument("--link-css", help="Only extract links from elements matching the given CSS selector")
+    parser.add_argument("--text-css", help="Only extract text from elements matching the given CSS selector")
+    parser.add_argument("--max-depth", default=10, type=int, help="Maximum depth of URL links to follow")
     args = parser.parse_args()
 
     loop = asyncio.get_event_loop()

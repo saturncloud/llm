@@ -1,8 +1,9 @@
+from cgitb import text
 from dataclasses import asdict, dataclass
 from typing import Dict, List, Optional, Type, Union
 
 import torch
-from datasets import Dataset
+from datasets import Dataset, Value
 from transformers import AutoModel, AutoTokenizer, PreTrainedTokenizerFast, PreTrainedModel
 
 from bert_qa.data import INDEXED_COLUMN, load_model_datasets, save_data
@@ -93,10 +94,12 @@ class Retriever:
             search_results.append(search_result)
         return search_results
 
-    def add_dataset(self, name: str, data: List[Content]):
-        dataset = Dataset.from_list([asdict(c) for c in data])
-        save_data(dataset, name)
+    def add_dataset(self, name: str, dataset: Dataset):
+        columns = ["source", "text", "title"]
+        if not all([c in dataset.column_names for c in columns]):
+            raise Exception("Invalid dataset: Missing required features source, text, and/or title")
 
+        save_data(dataset, name)
         dataset = self.tokenize_dataset(dataset)
         dataset = self.embed_dataset(dataset)
         dataset.add_faiss_index(INDEXED_COLUMN)
@@ -160,6 +163,10 @@ class Retriever:
                 "offset_mapping": offset_mapping,
             }
 
+        if len(dataset) == 0:
+            dataset = dataset.add_column("input_ids", [])
+            dataset = dataset.add_column("attention_mask", [])
+            return dataset.add_column("offset_mapping", [])
         return dataset.map(_tokenize, batched=True, batch_size=batch_size)
 
     def embed_dataset(self, dataset: Dataset, batch_size: int = 100) -> Dataset:
@@ -173,4 +180,6 @@ class Retriever:
                 **batch,
                 "embedding": self.cls_pooling(outputs).cpu()
             }
+        if len(dataset) == 0:
+            return dataset.add_column("embedding", [])
         return dataset.map(_embedding, batched=True, batch_size=batch_size)

@@ -11,6 +11,8 @@
             <input type="text" id="question" name="question">
             <label for="dataset_name">Dataset:</label>
             <input type="text" id="dataset_name" name="dataset_name" placeholder="(optional)">
+            <label for="top_k">Top K:</label>
+            <input type="number" id="top_k" name="top_k" value="3">
             <br><br>
             <input type="submit" id="submit_button" value="Submit">
         </form>
@@ -30,6 +32,25 @@
         const submitButton = document.getElementById("submit_button");
         const answersTable = document.getElementById("answers");
 
+        function addrow(question, answer="...", source="", score="", idx = 1) {
+            const row = answersTable.insertRow(idx);
+            const questionCell = row.insertCell(0);
+            const answerCell = row.insertCell(1);
+            const sourceCell = row.insertCell(2);
+            const scoreCell = row.insertCell(3);
+            questionCell.innerText = question
+            answerCell.innerText = answer
+            sourceCell.innerText = source
+            scoreCell.innerText = score
+            return row
+        }
+
+        function updaterow(row, answer, source, score) {
+            row.childNodes[1].innerText = answer
+            row.childNodes[2].innerText = source
+            row.childNodes[3].innerText = score
+        }
+
         if (questionForm) {
             questionForm.addEventListener("submit", async function(e) {
                 e.preventDefault();
@@ -41,13 +62,7 @@
                 }
                 questionInput.value = "";
 
-                const row = answers.insertRow(1);
-                const questionCell = row.insertCell(0);
-                const answerCell = row.insertCell(1);
-                const sourceCell = row.insertCell(2);
-                const scoreCell = row.insertCell(3);
-                questionCell.innerText = data["question"];
-                answerCell.innerText = "..."
+                row = addrow(data["question"])
 
                 const response = await fetch("/api/question", {
                     method: "POST",
@@ -56,11 +71,16 @@
                 });
                 if (response.ok) {
                     const content = await response.json();
-                    answerCell.innerText = content["text"];
-                    sourceCell.innerText = content["source"];
-                    scoreCell.innerText = content["score"];
+                    for (let i=0; i < content["answers"].length; i++) {
+                        answer = content["answers"][i]
+                        if (i == 0) {
+                            updaterow(row, answer["text"], answer["source"], answer["score"])
+                        } else {
+                            addrow("-", answer["text"], answer["source"], answer["score"], i + 1)
+                        }
+                    }
                 } else {
-                    answerCell.innerText = "ERROR";
+                    updaterow(row, "ERROR", "", "")
                 }
                 submitButton.disabled = false;
             })

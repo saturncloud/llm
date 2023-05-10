@@ -1,6 +1,6 @@
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 import pathlib
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, FileResponse
@@ -20,15 +20,20 @@ retriever = Retriever()
 class QuestionBody:
     question: str
     dataset_name: Optional[str] = None
-    top_k: int = 10
+    top_k: int = 3
 
 
 @dataclass
 class Answer:
     text: str
-    question: str
     source: str
     score: float
+
+
+@dataclass
+class TopAnswers:
+    question: str
+    answers: List[Answer] = field(default_factory=list)
 
 
 @app.get("/")
@@ -38,11 +43,16 @@ def index():
 
 @app.post("/api/question")
 def post_query(body: QuestionBody):
-    results = retriever.search(**asdict(body))
-    answer_text, score, i = bert_qa.best_answer(body.question, [r.text for r in results])
-    source = results[i].source if i >=0 else ""
-    answer = Answer(answer_text, body.question, score, source)
-    return JSONResponse(asdict(answer))
+    results = retriever.search(body.question, body.dataset_name, body.top_k * 2)
+    contexts = [r.text for r in results]
+
+    topk_answers = bert_qa.topk_answers(body.question, contexts, body.top_k)
+    answers = [
+        Answer(text, results[i].source if i >=0 else "", score)
+        for text, score, i in topk_answers
+    ]
+
+    return JSONResponse(asdict(TopAnswers(body.question, answers)))
 
 
 @dataclass

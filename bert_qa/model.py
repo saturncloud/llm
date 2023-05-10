@@ -1,3 +1,4 @@
+from token import RPAR
 from typing import List, Optional, Tuple, Type, Union
 
 import torch
@@ -27,17 +28,23 @@ class BertQA:
         self.model = model_cls.from_pretrained(model).to(self.device)
 
     def best_answer(self, question: str, contexts: List[str], **kwargs) -> Tuple[str, float, int]:
-        best_score = -1e20
-        best_answer = ""
-        best_context = -1
+        answers = self.topk_answers(question, contexts, top_k=1, **kwargs)
+        if len(answers) == 0:
+            return "", -1e20, -1
+        return answers[0]
+
+    def topk_answers(self, question: str, contexts: List[str], top_k: int = 3, **kwargs) -> List[Tuple[str, float, int]]:
+        scores = torch.full((1, len(contexts)), float(-1e20), dtype=torch.float64)
+        answers = [""] * len(contexts)
 
         for i, context in enumerate(contexts):
-            answer, score = self.answer_question(question, context, **kwargs)
-            if answer and score > best_score:
-                best_answer = answer
-                best_context = i
-                best_score = score
-        return best_answer, best_score, best_context
+            answers[i], scores[0, i] = self.answer_question(question, context, **kwargs)
+
+        top_scores, top_indices = torch.topk(scores, min(top_k, len(contexts)), 1)
+        return [
+            (answers[i], score, i)
+            for i, score in zip(top_indices[0].tolist(), top_scores[0].tolist())
+        ]
 
     def answer_question(
         self,
@@ -69,9 +76,14 @@ class BertQA:
         attention_mask = inputs.attention_mask.to(self.device)
 
         # Run model
-        output = self.model(input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
+        with torch.no_grad():
+            output = self.model(input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
         answer_start_scores = output["start_logits"]
         answer_end_scores = output["end_logits"]
+
+        # Set low scores for CLS token
+        answer_start_scores[:, 0] = -1e20
+        answer_end_scores[:, 0] = -1e20
 
         # Best answers in each span
         batch_start_indices = torch.argmax(answer_start_scores, 1)
@@ -92,9 +104,11 @@ class BertQA:
         start_index = batch_start_indices[best_batch]
         end_index = batch_end_indices[best_batch]
 
-        # Retrieve answer_ids from inputs in CPU memory
-        answer_ids = inputs.input_ids[best_batch, start_index:end_index+1]
+        answer = self.extract_answer(context, inputs, best_batch, start_index, end_index)
+        return answer, float(batch_avg_scores[best_batch])
 
+    def extract_answer(self, context: str, inputs: BatchEncoding, batch: int, start: int, end: int) -> str:
+        answer_ids = inputs.input_ids[batch, start:end+1]
         # If answer starts with CLS token, then the question is included. Remove it.
         if len(answer_ids) > 0 and answer_ids[0] == self.tokenizer.cls_token_id:
             sep_idx = 0
@@ -102,15 +116,13 @@ class BertQA:
                 if id == self.tokenizer.sep_token_id:
                     sep_idx = i
                     break
-            start_index += sep_idx + 1
+            start += sep_idx + 1
             answer_ids = answer_ids[sep_idx+1:]
 
         # Extract answer from the original text rather than decoding IDs for better readability
-        answer_start_offset = int(inputs.offset_mapping[best_batch, start_index][0])
-        answer_end_offset = int(inputs.offset_mapping[best_batch, end_index][-1])
-        answer = context[answer_start_offset:answer_end_offset]
-
-        return answer, float(batch_avg_scores[best_batch])
+        answer_start_offset = int(inputs.offset_mapping[batch, start][0])
+        answer_end_offset = int(inputs.offset_mapping[batch, end][-1])
+        return context[answer_start_offset:answer_end_offset]
 
     def tokenize(
         self,

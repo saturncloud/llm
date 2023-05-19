@@ -33,9 +33,9 @@ class SearchResult(Content):
 
 class Retriever:
     c_tokenizer: PreTrainedTokenizerFast
-    c_model: PreTrainedModel
+    c_model_map: Dict[int, PreTrainedModel]
     q_tokenizer: PreTrainedTokenizerFast
-    q_model: PreTrainedModel
+    q_model_map: Dict[int, PreTrainedModel]
 
     def __init__(
         self,
@@ -45,17 +45,25 @@ class Retriever:
         tokenizer_cls: Union[Type[PreTrainedTokenizerFast], Type[AutoTokenizer]] = AutoTokenizer,
         load_datasets: bool = True,
     ):
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         self.c_tokenizer = tokenizer_cls.from_pretrained(context_model)
-        self.c_model = model_cls.from_pretrained(context_model).to(self.device)
+        c_model = model_cls.from_pretrained(context_model)
+        if torch.cuda.is_available:
+            self.c_model_map = {x: c_model.to(x) for x in range(torch.cuda.device_count())}
+        else:
+            self.c_model_map = {0: c_model.to('cpu')}
+            
         if question_model:
             self.q_tokenizer = tokenizer_cls.from_pretrained(question_model)
-            self.q_model = model_cls.from_pretrained(question_model).to(self.device)
+            q_model = model_cls.from_pretrained(question_model).to(self.device)
+            if torch.cuda.is_available:
+                self.q_model_map = {x: q_model.to(x) for x in range(torch.cuda.device_count())}
+            else:
+                self.q_model_map = {0: q_model.to('cpu')}
         else:
             # Same model/tokenizer for context and question
             self.q_tokenizer = self.c_tokenizer
-            self.q_model = self.c_model
+            self.q_model_map = self.c_model_map
 
         self.datasets: Dict[str, Dataset] = {}
         if load_datasets:
@@ -64,11 +72,11 @@ class Retriever:
 
     @property
     def context_model_name(self) -> str:
-        return self.c_model.name_or_path.replace("/", "-").strip("-")
+        return self.c_model_map[0].name_or_path.replace("/", "-").strip("-")
 
     @property
     def question_model_name(self) -> str:
-        return self.q_model.name_or_path.replace("/", "-").strip("-")
+        return self.q_model_map[0].name_or_path.replace("/", "-").strip("-")
 
     def search(self, question: str, dataset_name: Optional[str] = None, top_k: int = 5) -> List[SearchResult]:
         if dataset_name:
@@ -107,12 +115,12 @@ class Retriever:
 
         self.datasets[name] = dataset
 
-    def question_embedding(self, text: str) -> torch.Tensor:
+    def question_embedding(self, text: str, device_numm=0) -> torch.Tensor:
         inputs = self.q_tokenizer(
             text, padding=True, truncation=False, verbose=False, return_tensors="pt"
         ).to(self.device)
         with torch.no_grad():
-            outputs = self.q_model(inputs.input_ids, attention_mask=inputs.attention_mask)
+            outputs = self.q_model_map[device_num](inputs.input_ids, attention_mask=inputs.attention_mask)
         return self.cls_pooling(outputs)[0]
 
     def cls_pooling(self, outputs) -> torch.Tensor:
@@ -174,16 +182,22 @@ class Retriever:
         return dataset.map(_tokenize, batched=True, batch_size=batch_size)
 
     def embed_dataset(self, dataset: Dataset, batch_size: int = 100) -> Dataset:
-        def _embedding(batch: Dict[str, List]) -> Dict:
+        import os
+        import torch.cuda
+        
+        def _embedding(batch: Dict[str, List], rank: int) -> Dict:
+            # os.environ["CUDA_VISIBLE_DEVICES"] = str(rank % torch.cuda.device_count())
             with torch.no_grad():
                 mask = batch.get("attention_mask")
-                input_ids = torch.tensor(batch["input_ids"]).to(self.device)
-                attention_mask = torch.tensor(mask).to(self.device) if mask else None
-                outputs = self.c_model(input_ids, attention_mask=attention_mask)
+                input_ids = torch.tensor(batch["input_ids"]).to(rank)
+                attention_mask = torch.tensor(mask).to(rank) if mask else None
+                outputs = self.c_model_map[rank](input_ids, attention_mask=attention_mask)
             return {
                 **batch,
                 "embedding": self.cls_pooling(outputs).cpu()
             }
         if len(dataset) == 0:
             return dataset.add_column("embedding", [])
-        return dataset.map(_embedding, batched=True, batch_size=batch_size)
+        from multiprocess import set_start_method
+        set_start_method('spawn')
+        return dataset.map(_embedding, batched=True, batch_size=batch_size, with_rank=True, num_proc=8)

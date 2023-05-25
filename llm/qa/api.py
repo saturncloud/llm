@@ -38,7 +38,7 @@ class TopAnswers:
 
 @app.get("/")
 def index():
-    return FileResponse(str(pathlib.Path(__file__).parent) + "/index.html", media_type="text/html")
+    return FileResponse(str(pathlib.Path(__file__).parent) + "/frontend/index.html", media_type="text/html")
 
 
 @app.post("/api/question")

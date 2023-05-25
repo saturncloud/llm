@@ -1,12 +1,16 @@
-from cgitb import text
+from curses import meta
 from dataclasses import asdict, dataclass
-from typing import Dict, List, Optional, Type, Union
+from importlib import metadata
+from typing import Any, Dict, Iterable, List, Optional, Type, Union
+from langchain.docstore.document import Document
+from langchain.embeddings.base import Embeddings
 
 import torch
-from datasets import Dataset, Value
+from datasets import Dataset
 from transformers import AutoModel, AutoTokenizer, PreTrainedTokenizerFast, PreTrainedModel
+from langchain.vectorstores.base import VectorStore, VST
 
-from bert_qa.data import INDEXED_COLUMN, load_model_datasets, save_data
+from llm.qa.data import INDEXED_COLUMN, load_model_datasets, save_data
 
 # Other models to try:
 # - context: sentence-transformers/all-mpnet-base-v2
@@ -31,7 +35,61 @@ class SearchResult(Content):
     score: float = 0.0
 
 
-class Retriever:
+# class QAEmbedding(Embeddings):
+#     def __init__(
+#         self,
+#         context_model: str = DEFAULT_CONTEXT_MODEL,
+#         question_model: Optional[str] = DEFAULT_QUESTION_MODEL,
+#         model_cls: Union[Type[PreTrainedModel], Type[AutoModel]] = AutoModel,
+#         tokenizer_cls: Union[Type[PreTrainedTokenizerFast], Type[AutoTokenizer]] = AutoTokenizer,
+#         max_length: int = 256,
+#         overlap_stride: int = 32,
+#     ):
+#         self.max_length = max_length
+#         self.overlap_stride = overlap_stride
+#         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+#         self.c_tokenizer = tokenizer_cls.from_pretrained(context_model)
+#         self.c_model = model_cls.from_pretrained(context_model).to(self.device)
+#         if question_model:
+#             self.q_tokenizer = tokenizer_cls.from_pretrained(question_model)
+#             self.q_model = model_cls.from_pretrained(question_model).to(self.device)
+#         else:
+#             # Same model/tokenizer for context and question
+#             self.q_tokenizer = self.c_tokenizer
+#             self.q_model = self.c_model
+
+#     def embed_documents(self, texts: List[str]) -> List[List[float]]:
+#         encoding = self.c_tokenizer(
+#             texts,
+#             padding=True,
+#             truncation=True,
+#             max_length=self.max_length,
+#             stride=self.overlap_stride,
+#             return_overflowing_tokens=False,
+#             return_tensors="pt",
+#         )
+
+#     def embed_dataset(self, dataset: Dataset, batch_size: int = 100) -> Dataset:
+#         def _embedding(batch: Dict[str, List]) -> Dict:
+#             with torch.no_grad():
+#                 mask = batch.get("attention_mask")
+#                 input_ids = torch.tensor(batch["input_ids"]).to(self.device)
+#                 attention_mask = torch.tensor(mask).to(self.device) if mask else None
+#                 outputs = self.c_model(input_ids, attention_mask=attention_mask)
+#             return {
+#                 **batch,
+#                 "embedding": self.cls_pooling(outputs).cpu()
+#             }
+#         if len(dataset) == 0:
+#             return dataset.add_column("embedding", [])
+#         return dataset.map(_embedding, batched=True, batch_size=batch_size)
+
+#     def embed_query(self, text: str) -> List[float]:
+#         return super().embed_query(text)
+
+
+class Retriever(VectorStore):
     c_tokenizer: PreTrainedTokenizerFast
     c_model: PreTrainedModel
     q_tokenizer: PreTrainedTokenizerFast
@@ -44,6 +102,7 @@ class Retriever:
         model_cls: Union[Type[PreTrainedModel], Type[AutoModel]] = AutoModel,
         tokenizer_cls: Union[Type[PreTrainedTokenizerFast], Type[AutoTokenizer]] = AutoTokenizer,
         load_datasets: bool = True,
+        embedding: Optional[Embeddings] = None,
     ):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -57,10 +116,38 @@ class Retriever:
             self.q_tokenizer = self.c_tokenizer
             self.q_model = self.c_model
 
+        self.vector_store: Optional[Dataset] = None
+        self.embedding = embedding
+
         self.datasets: Dict[str, Dataset] = {}
         if load_datasets:
             for name, dataset in load_model_datasets(self.context_model_name):
                 self.datasets[name] = dataset
+
+    ### VectorStore methods ###
+    def add_texts(self, texts: Iterable[str], metadatas: Optional[List[dict]] = None, **kwargs: Any) -> List[str]:
+        metadatas = metadatas or [{}] * len(texts)
+        dataset = Dataset.from_dict({"text": texts, "metadata": metadatas})
+        dataset = self.tokenize_dataset(dataset)
+        dataset = self.embed_dataset(dataset)
+
+        if self.vector_store:
+            for item in dataset:
+                self.vector_store.add_item(item)
+        else:
+            self.vector_store = dataset
+
+    def similarity_search(self, query: str, k: int = 3, **kwargs: Any) -> List[Document]:
+        kwargs.setdefault("dataset_name", "kubernetes")
+        search_results = self.search(query, top_k=k, **kwargs)
+        return [Document(page_content=result.text, metadata=asdict(result)) for result in search_results]
+
+    @classmethod
+    def from_texts(cls: Type[VST], texts: List[str], embedding: Embeddings, metadatas: Optional[List[dict]] = None, **kwargs: Any) -> VST:
+        retriever = cls(load_datasets=False, embedding=embedding, **kwargs)
+        retriever.add_texts(texts, metadatas)
+        return retriever
+    ### End VectorStore ###
 
     @property
     def context_model_name(self) -> str:

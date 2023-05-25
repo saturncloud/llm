@@ -3,8 +3,8 @@ import argparse
 import logging
 import sys
 
-from bert_qa.data import load_data
-from bert_qa.retriever import Retriever
+from llm.qa.data import load_data
+from llm.qa.retriever import Retriever
 
 
 def embed_dataset(name: str):

@@ -5,8 +5,8 @@ from urllib.parse import urlparse
 
 from datasets import Dataset
 
-from bert_qa.crawler import DocSpider
-from bert_qa.retriever import Retriever
+from llm.qa.crawler import DocSpider
+from llm.qa.retriever import Retriever
 
 
 async def scrape_dataset(url: str, name: Optional[str] = None, max_depth: int = 10, log_level: str = "INFO", **spider_kwargs) -> Dataset:

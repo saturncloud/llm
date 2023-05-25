@@ -6,9 +6,9 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse, FileResponse
 import uvicorn
 
-from bert_qa.retriever import Retriever
-from bert_qa.model import BertQA
-from bert_qa.jobs.scrape import scrape_dataset
+from llm.qa.retriever import Retriever
+from llm.qa.model import BertQA
+from llm.qa.jobs.scrape import scrape_dataset
 
 
 app = FastAPI()

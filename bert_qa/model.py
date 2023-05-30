@@ -11,7 +11,7 @@ from transformers import AutoModelForQuestionAnswering, AutoTokenizer, BatchEnco
 # - microsoft/layoutlmv2-large-uncased (or base)
 
 DEFAULT_MODEL = "bert-large-uncased-whole-word-masking-finetuned-squad"
-
+# DEFAULT_MODEL = "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract"
 
 class BertQA:
     model: PreTrainedModel

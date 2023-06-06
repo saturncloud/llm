@@ -77,8 +77,9 @@ class Retriever(VectorStore):
         load_datasets: bool = True,
         datasets: Optional[Dict[str, Dataset]] = None
     ):
-        from multiprocess import set_start_method
-        set_start_method('spawn')
+        from multiprocess import set_start_method, get_start_method
+        if not get_start_method():
+            set_start_method('spawn')
         self.context_model = context_model
         self.question_model = question_model
         

@@ -67,22 +67,27 @@ def parse(node):
     text = None
     source = None
     title = None
-    _ = node.find('.//AbstractText')
+    publication_title = None
+    _ = node.find('.//Abstract')
     if _ is not None:
-        text = _.text
+        text = etree.tostring(_, encoding='utf-8', method='text')
         text = to_string(text)
     _ = node.find('.//ArticleTitle')
     if _ is not None:
         title = _.text
         title = to_string(title)
-    _ = node.find('.//ArticleTitle')
+    _ = node.find(".//ArticleId[@IdType='doi']")
     if _ is not None:
-        source = etree.tostring(_).decode('utf-8')
+        source = etree.tostring(_, encoding='utf-8', method='text')
         source = to_string(source)
     journal_title_node = node.find('.//Journal/Title')
     if journal_title_node is not None:
         publication_title = journal_title_node.text
     return dict(text=text, source=source, title=title, publication_title=publication_title)
+
+
+def handle_one_xml_wrapper(datadir: str, output: str, tmpdir: str, fname: str):
+    return handle_one_xml(join(datadir, fname), join(output, fname) + ".jsonl", tmpdir)
 
 
 def handle_one_xml(input_path: str, output_path: str, tmpdir: str):
@@ -113,9 +118,14 @@ def handle_all_xml(datadir: str, output: str, tmpdir: str, max_workers: int) -> 
         os.makedirs(output)
     if not exists(tmpdir):
         os.makedirs(tmpdir)
-    def partial(fname):
-        return handle_one_xml(join(datadir, fname), join(output, fname) + ".jsonl", tmpdir)
-    process_map(partial, os.listdir(datadir), max_workers=max_workers)
+
+    func = partial(handle_one_xml_wrapper, datadir, output, tmpdir)
+    if max_workers > 1:
+        process_map(func, os.listdir(datadir), max_workers=max_workers)
+    else:
+        # for path in os.listdir(datadir):
+        #    func(path)
+        list(map(func, os.listdir(datadir)))
 
 
 @cli.command()

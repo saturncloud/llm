@@ -9,8 +9,10 @@ import torch
 from datasets import Dataset
 from transformers import AutoModel, AutoTokenizer, PreTrainedTokenizerFast, PreTrainedModel
 from langchain.vectorstores.base import VectorStore, VST
+from langchain.text_splitter import RecursiveCharacterTextSplitter as lRCTS
 
 from llm.qa.data import INDEXED_COLUMN, load_model_datasets, save_data
+from llm.qa.embedding import RecursiveCharacterTextSplitter
 
 # Other models to try:
 # - context: sentence-transformers/all-mpnet-base-v2
@@ -33,60 +35,6 @@ class Content:
 @dataclass
 class SearchResult(Content):
     score: float = 0.0
-
-
-# class QAEmbedding(Embeddings):
-#     def __init__(
-#         self,
-#         context_model: str = DEFAULT_CONTEXT_MODEL,
-#         question_model: Optional[str] = DEFAULT_QUESTION_MODEL,
-#         model_cls: Union[Type[PreTrainedModel], Type[AutoModel]] = AutoModel,
-#         tokenizer_cls: Union[Type[PreTrainedTokenizerFast], Type[AutoTokenizer]] = AutoTokenizer,
-#         max_length: int = 256,
-#         overlap_stride: int = 32,
-#     ):
-#         self.max_length = max_length
-#         self.overlap_stride = overlap_stride
-#         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-
-#         self.c_tokenizer = tokenizer_cls.from_pretrained(context_model)
-#         self.c_model = model_cls.from_pretrained(context_model).to(self.device)
-#         if question_model:
-#             self.q_tokenizer = tokenizer_cls.from_pretrained(question_model)
-#             self.q_model = model_cls.from_pretrained(question_model).to(self.device)
-#         else:
-#             # Same model/tokenizer for context and question
-#             self.q_tokenizer = self.c_tokenizer
-#             self.q_model = self.c_model
-
-#     def embed_documents(self, texts: List[str]) -> List[List[float]]:
-#         encoding = self.c_tokenizer(
-#             texts,
-#             padding=True,
-#             truncation=True,
-#             max_length=self.max_length,
-#             stride=self.overlap_stride,
-#             return_overflowing_tokens=False,
-#             return_tensors="pt",
-#         )
-
-#     def embed_dataset(self, dataset: Dataset, batch_size: int = 100) -> Dataset:
-#         def _embedding(batch: Dict[str, List]) -> Dict:
-#             with torch.no_grad():
-#                 mask = batch.get("attention_mask")
-#                 input_ids = torch.tensor(batch["input_ids"]).to(self.device)
-#                 attention_mask = torch.tensor(mask).to(self.device) if mask else None
-#                 outputs = self.c_model(input_ids, attention_mask=attention_mask)
-#             return {
-#                 **batch,
-#                 "embedding": self.cls_pooling(outputs).cpu()
-#             }
-#         if len(dataset) == 0:
-#             return dataset.add_column("embedding", [])
-#         return dataset.map(_embedding, batched=True, batch_size=batch_size)
-
-#     def embed_query(self, text: str) -> List[float]:
-#         return super().embed_query(text)
 
 
 class Retriever(VectorStore):
@@ -186,13 +134,17 @@ class Retriever(VectorStore):
         if not all([c in dataset.column_names for c in columns]):
             raise Exception("Invalid dataset: Missing required features source, text, and/or title")
 
-        save_data(dataset, name)
         dataset = self.tokenize_dataset(dataset)
         dataset = self.embed_dataset(dataset)
         dataset.add_faiss_index(INDEXED_COLUMN)
-        save_data(dataset, name, self.context_model_name)
-
         self.datasets[name] = dataset
+        return dataset
+
+    def save_dataset(self, name: str):
+        dataset = self.datasets.get(name)
+        if not dataset:
+            raise Exception(f"Dataset {name} not found")
+        save_data(dataset, name, self.context_model_name)
 
     def question_embedding(self, text: str) -> torch.Tensor:
         inputs = self.q_tokenizer(

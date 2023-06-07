@@ -3,24 +3,28 @@ from typing import Tuple
 import torch
 from datasets import Dataset
 from fastchat.serve.cli import SimpleChatIO
-from transformers import PreTrainedModel, PreTrainedTokenizerFast, LlamaForCausalLM, LlamaTokenizer
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase, LlamaForCausalLM, LlamaTokenizer
 from fastchat.serve.inference import generate_stream
 from fastchat.conversation import Conversation, SeparatorStyle
 
 from bert_qa.data import INDEXED_COLUMN
 from bert_qa.retriever import Retriever
+from bert_qa import model_configs
 
 base_model = "/home/jovyan/workspace/models/vicuna-7b"
 
-def make_model() -> Tuple[PreTrainedModel, PreTrainedTokenizerFast]:
-    model = LlamaForCausalLM.from_pretrained(
+
+def make_model() -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
+    model = AutoModelForCausalLM.from_pretrained(
         base_model,
         load_in_8bit=True,
         torch_dtype=torch.float16,
         device_map="auto",
         low_cpu_mem_usage=None,
     )
-    tokenizer = LlamaTokenizer.from_pretrained(base_model)
+    # Llama fast tokenizer is not good
+    use_fast = not isinstance(model, LlamaForCausalLM)
+    tokenizer = AutoTokenizer.from_pretrained(base_model, use_fast=use_fast)
     return model, tokenizer
 
 
@@ -104,9 +108,11 @@ class StreamlitChatLoop:
         self.retriever = None
         self.model = None
         self.tokenizer = None
-        self.system = None
-        self.conv = None
         self.output = None
+        self.results = []
+        self.model_config = model_configs.VICUNA
+        self.conv = self.model_config.create_conversation()
+        self.load_models()
 
     def load_models(self):
         if self.orig:
@@ -116,26 +122,26 @@ class StreamlitChatLoop:
         orig = Dataset.from_json("/home/jovyan/output-heart/pubmed-single/data.jsonl")
         ds = Dataset.from_parquet("/home/jovyan/output-heart/pubmed-single/data-embeddings.parquet")
         ds.load_faiss_index(INDEXED_COLUMN, "/home/jovyan/output-heart/pubmed-single/data-embeddings.faiss")
-        retriever = Retriever(context_model=model, question_model=model, load_datasets=False, datasets={'pubmed': ds})
-        model, tokenizer = make_model()
+        self.retriever = Retriever(context_model=model, question_model=model, load_datasets=False, datasets={'pubmed': ds})
+        self.model, self.tokenizer = self.model_config.load()
         self.orig = orig
         self.ds = ds
-        self.retriever = retriever
-        self.model = model
-        self.tokenizer = tokenizer
 
-    def set_question(self, question):
-        self.question = question
-        self.load_models()
+    def append_question(self, question: str):
+        self.conv.append_message(self.conv.roles[0], question)
+        self.conv.append_message(self.conv.roles[1], None)
+
+    def search_results(self, question: str):
         results = self.retriever.search(question, None, 3)
         self.results = results[::-1]
+        self.make_prompt(self.results)
+
+    def get_chat(self) -> str:
+        messages = [f'{role}: {"" if message is None else message}' for role, message in self.conv.messages]
+        return "\n\n".join(messages)
 
     def make_prompt(self, results):
-        # system = "A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions.\n"
-        # system += f"The assistant will only use information from the following articles:\n"
-        # system = "Given the following extracted parts of a long document and a question, create a final answer. If you don't know the answer, just say that you don't know. Don't try to make up an answer.\n\n"
-
-        system = ""
+        context = ""
         for idx, result in enumerate(results):
             print(result.score)
             if result.meta['original_index']:
@@ -143,32 +149,16 @@ class StreamlitChatLoop:
             else:
                 text = result.text
             result.original_text = text
-            # system += f"Article {idx}:\n"
-            system += text.strip().replace('\n', '')
-            system += "\n\n"
-        system += "Please use the above context to answer questions from a curious user.\n\n"
-        self.system = system
+            text = text.strip().replace("\n", "")
+            context += f"{self.model_config.context_label}: {text}\n\n"
 
-    def create_conversation(self):
-        conv = Conversation(
-            name='vicuna_v1.1',
-            system=self.system,
-            roles=['USER', 'ASSISTANT'],
-            messages=[['USER', 'hi'], ['ASSISTANT', None]],
-            offset=0,
-            sep_style=SeparatorStyle.ADD_COLON_TWO,
-            sep=' ',
-            sep2='</s>',
-            stop_str = None,
-            stop_token_ids = None
-        )
-        self.conv = conv
-        self.conv.messages = []
+        prompt_kwargs = {}
+        if "roles" in self.model_config.default_prompt.inputs:
+            prompt_kwargs["roles"] = self.conv.roles
+        if "context_label" in self.model_config.default_prompt.inputs:
+            prompt_kwargs["context_label"] = self.model_config.context_label
 
-    def start_loop(self, user_input: str):
-        conv = self.conv
-        conv.append_message(conv.roles[0], user_input)
-        conv.append_message(conv.roles[1], None)
+        self.conv.system = self.model_config.render_prompt(context=context, **prompt_kwargs)
 
     def loop(self):
         conv = self.conv
@@ -199,7 +189,7 @@ class StreamlitChatLoop:
         final_out = output_text
         conv.messages[-1][-1] = final_out.strip()
         print('**DEBUG**')
-        print(prompt[-context_len:])
+        print(prompt)
         print(final_out)
         # print("\n", {"prompt": prompt, "outputs": final_out}, "\n")
 

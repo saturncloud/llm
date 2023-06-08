@@ -19,6 +19,7 @@ async def scrape_dataset(
     log_level: str = "INFO",
     chunk_size: int = 256,
     chunk_overlap: int = 32,
+    save_final: bool = False,
     **spider_kwargs,
 ) -> Dataset:
     parsed = urlparse(url)
@@ -51,9 +52,15 @@ async def scrape_dataset(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
     )
-    docstore = DocStore.from_weaviate(embedding, index_name=name)
-    docstore.add_dataset(dataset, splitter=splitter)
-    # retriever.add_dataset(name, dataset)
+    docstore = DocStore(embedding)
+
+    dataset = docstore.parse_dataset(dataset)
+    dataset = docstore.split_dataset(dataset, splitter)
+    dataset = docstore.embed_dataset(dataset, devices="auto")
+
+    if save_final:
+        save_data(dataset, name, embedding.context_model.name_or_path)
+    docstore.add_dataset(dataset, name)
 
 
 if __name__ == "__main__":
@@ -68,6 +75,7 @@ if __name__ == "__main__":
     parser.add_argument("--log-level", default="INFO", help="Logging level")
     parser.add_argument("--chunk-size", help="Max number of tokens per context chunk", default=256)
     parser.add_argument("--chunk-overlap", help="Number of tokens shared between adjacent chunks", default=32)
+    parser.add_argument("-s", "--save-final", action="store_true", help="Save final dataset before adding to doc store")
     args = parser.parse_args()
 
     loop = asyncio.get_event_loop()

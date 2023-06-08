@@ -9,7 +9,7 @@ from llm.qa.embedding import QAEmbeddings, RecursiveCharacterTextSplitter
 from llm.qa.retriever import Retriever
 
 
-def embed_dataset(name: str, chunk_size: int = 256, chunk_overlap: int = 32):
+def embed_dataset(name: str, chunk_size: int = 256, chunk_overlap: int = 32, save_final: bool = False):
     dataset = load_data(name, "data")
     if not dataset:
         logging.error("Raw dataset not found")
@@ -28,14 +28,16 @@ def embed_dataset(name: str, chunk_size: int = 256, chunk_overlap: int = 32):
     dataset = docstore.split_dataset(dataset, splitter)
     dataset = docstore.embed_dataset(dataset, devices="auto")
 
-    save_data(dataset, name, embedding.context_model.name_or_path)
-    docstore.add_dataset(dataset, class_name=f"{name}Test")
+    if save_final:
+        save_data(dataset, name, embedding.context_model.name_or_path)
+    docstore.add_dataset(dataset, class_name=name)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("docBERT HTML scrape")
     parser.add_argument("name", help="Name of the dataset to embed with the current retriever model")
     parser.add_argument("--chunk-size", help="Max number of tokens per context chunk", default=256)
     parser.add_argument("--chunk-overlap", help="Number of tokens shared between adjacent chunks", default=32)
+    parser.add_argument("-s", "--save-final", action="store_true", help="Save final dataset before adding to doc store")
     args = parser.parse_args()
 
     embed_dataset(**vars(args))

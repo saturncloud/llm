@@ -11,7 +11,7 @@ import weaviate
 from weaviate.embedded import EmbeddedOptions
 
 from langchain.embeddings.base import Embeddings
-from langchain.vectorstores.base import VectorStoreRetriever
+from langchain.vectorstores.base import VectorStoreRetriever, VectorStore
 from langchain.vectorstores.weaviate import Weaviate, _default_score_normalizer
 
 from llm.qa.embedding import TextSplitter, QAEmbeddings
@@ -27,10 +27,13 @@ class DataFields(StrEnum):
     Required fields for data in DocStore
     """
 
+    ID = "id"
     TEXT = "text"
+    EMBEDDING = "embedding"
+
+    # Split documents
     DOC_ID = "doc_id"
     DOC_OFFSET = "doc_offset"
-    EMBEDDING = "embedding"
 
 
 class DocStore:
@@ -54,15 +57,18 @@ class DocStore:
         dataset: Dataset,
         class_name: Optional[str] = None,
         batch_size: int = 1000,
+        has_uuids: bool = True,
     ):
         object_ids = []
         def _add_batch(batch: Dict[str, List]) -> Dict:
-            vectors = batch.pop(DataFields.EMBEDDING)
+            embeddings = batch.pop(DataFields.EMBEDDING)
+            uuids = batch.pop(DataFields.ID) if has_uuids else None
             data_objects = to_row_format(batch)
 
             ids = self._add_embedded(
                 data_objects=data_objects,
-                vectors=vectors,
+                vectors=embeddings,
+                uuids=uuids,
                 class_name=class_name,
             )
             object_ids.append(ids)
@@ -70,6 +76,7 @@ class DocStore:
         self._validate_dataset(dataset)
         class_name = class_name or self.default_class_name
         dataset.map(_add_batch, batched=True, batch_size=batch_size)
+        return object_ids
 
     def add_texts(
         self,
@@ -110,16 +117,37 @@ class DocStore:
                 object_ids.append(object_id)
         return object_ids
 
-    def search(self, question: str, class_name: Optional[str] = None, top_k: int = 3):
+    def search(
+        self,
+        question: str,
+        class_name: Optional[str] = None,
+        top_k: int = 3,
+        include_fields: Optional[List[str]] = None,
+        include_additional: Optional[List[str]] = None,
+    ):
+        class_name = class_name or self.default_class_name
+        fields = set([str(DataFields.TEXT), *(include_fields or [])])
+        additional = set(["id", "distance", *(include_additional or [])])
+
         vector = self.embedding.embed_query(question)
         results = (
             self.weaviate_client.query
-            .get(class_name or self.default_class_name)
+            .get(class_name, list(fields))
+            .with_additional(list(additional))
             .with_near_vector({"vector": vector})
             .with_limit(top_k)
             .do()
         )
-        return results
+        if "data" not in results:
+            raise Exception(results)
+
+        data_objects = results["data"]["Get"][class_name]
+        for data in data_objects:
+            _additional = data.pop("_additional")
+            data[DataFields.ID] = _additional.pop("id")
+            data.update(_additional)
+
+        return data_objects
 
     def parse_dataset(
         self,
@@ -147,8 +175,8 @@ class DocStore:
             texts = batch.pop(source_text_field)
             metadata = {}
 
-            if source_id_field or DataFields.DOC_ID in batch:
-                doc_ids = batch.pop(source_id_field or DataFields.DOC_ID)
+            if source_id_field or DataFields.ID in batch:
+                doc_ids = batch.pop(source_id_field or DataFields.ID)
                 doc_ids = [str(uid) for uid in doc_ids]
             else:
                 doc_ids = [str(uuid4()) for _ in range(len(texts))]
@@ -158,9 +186,9 @@ class DocStore:
                     metadata[key] = batch[key]
 
             return {
+                DataFields.ID: doc_ids,
                 DataFields.TEXT: texts,
                 **metadata,
-                DataFields.DOC_ID: doc_ids,
             }
 
         if source_text_field is None:
@@ -195,39 +223,46 @@ class DocStore:
         """
         Split the text in the given dataset into chunks, copying metadata for each split
         and tracking the offset from the parent document.
+
+        Map ID -> DOC_ID, and assign a new ID to each split
         """
         def _split_batch(
             batch: Dict[str, List],
         ) -> Dict:
             texts = batch.pop(DataFields.TEXT)
             split_texts = []
-            split_data: Dict[str, List[Any]] = {key: [] for key in batch.keys()}
-            doc_offsets = []
+            keys = [DataFields.ID, DataFields.DOC_ID, DataFields.DOC_OFFSET, *batch.keys()]
+            split_data: Dict[str, List[Any]] = {key: [] for key in keys}
 
             for i, text in enumerate(texts):
-                split = splitter.split_text(text)
-                split_texts.extend(split)
+                splits = splitter.split_text(text)
+                split_texts.extend(splits)
 
-                # Duplicate other data for each split, and track offset
-                for j in range(len(split)):
-                    doc_offsets.append(j)
+                # Duplicate other data for each split, generate IDs, and track offset
+                for j in range(len(splits)):
+                    split_data[DataFields.ID].append(str(uuid4()))
+                    split_data[DataFields.DOC_OFFSET].append(j)
                     for key, vals in batch.items():
+                        if key == DataFields.ID:
+                            key = DataFields.DOC_ID
                         split_data[key].append(deepcopy(vals[i]))
 
             return {
                 DataFields.TEXT: split_texts,
                 **split_data,
-                DataFields.DOC_OFFSET: doc_offsets,
             }
 
-        self._validate_dataset(dataset, exclude=[DataFields.DOC_OFFSET, DataFields.EMBEDDING])
+        self._validate_dataset(
+            dataset, exclude=[DataFields.EMBEDDING, DataFields.DOC_OFFSET, DataFields.DOC_ID]
+        )
         logger.info("Splitting dataset")
-        return dataset.map(
+        dataset = dataset.map(
             _split_batch,
             batched=True,
             batch_size=batch_size,
             remove_columns=dataset.column_names,
         )
+        return dataset
 
     def embed_dataset(
         self,
@@ -244,21 +279,21 @@ class DocStore:
         """
         def _embed_batch(batch: Dict[str, List], rank: Optional[int]) -> Dict:
             texts = batch[DataFields.TEXT]
-            vectors = embeddings[rank or 0].embed_documents(texts)
+            vectors = embedding_devices[rank or 0].embed_documents(texts)
             return {
                 **batch,
                 DataFields.EMBEDDING: vectors,
             }
 
         if devices:
-            embeddings = self.embedding.multiprocess(devices)
+            embedding_devices = self.embedding.multiprocess(devices)
         else:
-            embeddings = [self.embedding]
+            embedding_devices = [self.embedding]
 
         self._validate_dataset(dataset, exclude=[DataFields.EMBEDDING])
         logger.info("Embedding dataset")
         return dataset.map(
-            _embed_batch, batched=True, batch_size=batch_size, num_proc=len(embeddings), with_rank=True
+            _embed_batch, batched=True, batch_size=batch_size, num_proc=len(embedding_devices), with_rank=True
         )
 
     def _validate_dataset(self, dataset: Dataset, exclude: Optional[List[str]] = None):
@@ -272,14 +307,25 @@ class DocStore:
             if field not in given:
                 raise ValueError(f"Invalid dataset. Expected fields: {expected}. Given: {given}")
 
-    def as_retriever(self, **kwargs: Any) -> VectorStoreRetriever:
-        return self.vector_store.as_retriever(**kwargs)
+    def as_vector_store(self, class_name: Optional[str] = None, **kwargs) -> Weaviate:
+        kwargs.setdefault("by_text", False)
+        return Weaviate(
+            self.weaviate_client,
+            index_name=class_name or self.default_class_name,
+            text_key=DataFields.TEXT,
+            embedding=self.embedding,
+            **kwargs,
+        )
+
+    def as_retriever(self, class_name: Optional[str] = None, **kwargs: Any) -> VectorStoreRetriever:
+        return self.as_vector_store(class_name=class_name).as_retriever(**kwargs)
 
 
 def init_weaviate(wait_timeout: int = 60, **kwargs) -> weaviate.Client:
     if "url" not in kwargs and "embedded_options" not in kwargs:
         # Use local "embedded" (poor name choice) weaviate running in subproc
         kwargs["embedded_options"] = weaviate.EmbeddedOptions()
+    weaviate.Config()
     client = weaviate.Client(**kwargs)
 
     if wait_timeout > 0:

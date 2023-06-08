@@ -18,6 +18,18 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODEL = "sentence-transformers/multi-qa-mpnet-base-dot-v1"
 
 
+def parse_device(device: Union[str, int, None] = None) -> str:
+    if device is None:
+        if not torch.cuda.is_available():
+            return "cpu"
+        device = "cuda"
+    if device == "cuda":
+        return f"cuda:{torch.cuda.current_device()}"
+    elif isinstance(device, int):
+        return f"cuda:{device}"
+    return device
+
+
 class QAEmbeddings(Embeddings):
     def __init__(
         self,
@@ -25,11 +37,9 @@ class QAEmbeddings(Embeddings):
         context_tokenizer: Optional[PreTrainedTokenizerBase] = None,
         question_model: Optional[Union[str, PreTrainedModel]] = None,
         question_tokenizer: Optional[PreTrainedTokenizerBase] = None,
-        device: Optional[str] = None,
+        device: Union[str, int, None] = None,
     ):
-        if device is None:
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.device = device
+        self.device = parse_device(device)
 
         # Load context model/tokenizer
         if isinstance(context_model, str):
@@ -47,6 +57,32 @@ class QAEmbeddings(Embeddings):
                 question_tokenizer = AutoTokenizer.from_pretrained(question_model.name_or_path)
         self.question_model = question_model or self.context_model
         self.question_tokenizer = question_tokenizer or self.context_tokenizer
+
+    def multiprocess(
+        self,
+        devices: Union[str, List[Union[str, int]]] = "auto",
+        set_start_method: bool = True,
+    ) -> List[QAEmbeddings]:
+        if devices == "auto":
+            devices = [f"cuda:{i}" for i in range(torch.cuda.device_count())]
+        else:
+            if not isinstance(devices, list):
+                devices = [devices]
+            devices = [parse_device(device) for device in devices]
+
+        if set_start_method and len(devices) > 1 and torch.cuda.is_available():
+            # Required to fork a process using CUDA
+            import multiprocess
+            multiprocess.set_start_method("spawn")
+
+        embeddings = []
+        for device in devices:
+            if device == self.device:
+                # Reuse self if already loaded on device
+                embeddings.append(self)
+            else:
+                embeddings.append(self.to(device))
+        return embeddings
 
     def to(self, *args, **kwargs) -> QAEmbeddings:
         context_model = self.context_model.to(*args, **kwargs)

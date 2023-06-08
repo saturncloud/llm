@@ -23,9 +23,11 @@ def embed_dataset(name: str, chunk_size: int = 256, chunk_overlap: int = 32):
         chunk_overlap=chunk_overlap,
     )
     docstore = DocStore(embedding)
+
     dataset = docstore.parse_dataset(dataset)
     dataset = docstore.split_dataset(dataset, splitter)
-    dataset = docstore.embed_dataset(dataset)
+    dataset = docstore.embed_dataset(dataset, devices="auto")
+
     save_data(dataset, name, embedding.context_model.name_or_path)
     docstore.add_dataset(dataset, class_name=f"{name}Test")
 

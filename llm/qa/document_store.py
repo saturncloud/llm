@@ -1,25 +1,20 @@
 from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime
-from enum import Enum
 import logging
-from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Type, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Union
 from uuid import uuid4
 from time import sleep
 
 from datasets import Dataset
-from numpy import in1d, row_stack
-from pandas import DateOffset
-import torch
 import weaviate
 from weaviate.embedded import EmbeddedOptions
 
-from langchain.docstore.document import Document
 from langchain.embeddings.base import Embeddings
-from langchain.vectorstores.base import VectorStore, VST, VectorStoreRetriever
+from langchain.vectorstores.base import VectorStoreRetriever
 from langchain.vectorstores.weaviate import Weaviate, _default_score_normalizer
 
-from llm.qa.embedding import RecursiveCharacterTextSplitter, TextSplitter, QAEmbeddings
+from llm.qa.embedding import TextSplitter, QAEmbeddings
 from llm.utils.enum import StrEnum
 
 logger = logging.getLogger(__name__)
@@ -136,6 +131,7 @@ class DocStore:
     ) -> Dataset:
         """
         Parse fields in the given dataset to match the expected format.
+        Add UUIDs to each row if not given
 
         params:
             source_text_field: Text field to exract from the source dataset
@@ -151,12 +147,11 @@ class DocStore:
             texts = batch.pop(source_text_field)
             metadata = {}
 
-            if source_id_field:
-                doc_ids = [str(_id) for _id in batch.pop(source_id_field)]
+            if source_id_field or DataFields.DOC_ID in batch:
+                doc_ids = batch.pop(source_id_field or DataFields.DOC_ID)
+                doc_ids = [str(uid) for uid in doc_ids]
             else:
-                doc_ids = [""] * len(texts)
-                for i in range(len(texts)):
-                    doc_ids[i] = str(uuid4())
+                doc_ids = [str(uuid4()) for _ in range(len(texts))]
 
             if include_meta:
                 for key in include_meta:
@@ -238,41 +233,32 @@ class DocStore:
         self,
         dataset: Dataset,
         batch_size: int = 100,
-        devices: Optional[Union[str, List[Any]]] = None,
+        devices: Optional[Union[str, List[Union[str, int]]]] = None,
     ) -> Dataset:
         """
         Compute embeddings for the text field and add to the dataset
 
         params:
-            devices: List of devices to send the model to for multi-processing
+            devices: List of devices to send the model to for multiprocessing
                 Pass "auto" to use all available CUDA devices
         """
         def _embed_batch(batch: Dict[str, List], rank: Optional[int]) -> Dict:
             texts = batch[DataFields.TEXT]
-            vectors = embedding_map[rank or 0].embed_documents(texts)
+            vectors = embeddings[rank or 0].embed_documents(texts)
             return {
                 **batch,
                 DataFields.EMBEDDING: vectors,
             }
 
-        if devices == "auto":
-            devices = [i for i in range(torch.cuda.device_count())]
-        elif not isinstance(devices, list):
-            devices = [devices]
-
-        num_proc = len(devices)
-        if num_proc > 1 and torch.cuda.is_available():
-            import multiprocess
-            multiprocess.set_start_method("spawn")
-
-        embedding_map: Dict[int, QAEmbeddings] = {}
-        for i, device in enumerate(devices):
-            embedding_map[i] = self.embedding.to(device) if device else self.embedding
+        if devices:
+            embeddings = self.embedding.multiprocess(devices)
+        else:
+            embeddings = [self.embedding]
 
         self._validate_dataset(dataset, exclude=[DataFields.EMBEDDING])
         logger.info("Embedding dataset")
         return dataset.map(
-            _embed_batch, batched=True, batch_size=batch_size, num_proc=num_proc, with_rank=True
+            _embed_batch, batched=True, batch_size=batch_size, num_proc=len(embeddings), with_rank=True
         )
 
     def _validate_dataset(self, dataset: Dataset, exclude: Optional[List[str]] = None):

@@ -9,7 +9,6 @@ from llm.qa.crawler import DocSpider
 from llm.qa.data import save_data
 from llm.qa.document_store import DocStore
 from llm.qa.embedding import QAEmbeddings, RecursiveCharacterTextSplitter
-from llm.qa.retriever import Retriever
 
 
 async def scrape_dataset(
@@ -19,7 +18,6 @@ async def scrape_dataset(
     log_level: str = "INFO",
     chunk_size: int = 256,
     chunk_overlap: int = 32,
-    save_final: bool = False,
     **spider_kwargs,
 ) -> Dataset:
     parsed = urlparse(url)
@@ -37,7 +35,6 @@ async def scrape_dataset(
         for domains in allowed_domains:
             spider_kwargs["allowed_domains"].extend(domains.split(","))
 
-    # retriever = Retriever(load_datasets=False)
     dataset = DocSpider.run(
         url,
         **spider_kwargs,
@@ -52,15 +49,14 @@ async def scrape_dataset(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
     )
-    docstore = DocStore(embedding)
+    docstore = DocStore(embedding, index_name=name)
 
     dataset = docstore.parse_dataset(dataset)
     dataset = docstore.split_dataset(dataset, splitter)
     dataset = docstore.embed_dataset(dataset, devices="auto")
+    save_data(dataset, name, embedding.context_model.name_or_path)
 
-    if save_final:
-        save_data(dataset, name, embedding.context_model.name_or_path)
-    docstore.add_dataset(dataset, name)
+    docstore.add_dataset(dataset)
 
 
 if __name__ == "__main__":
@@ -75,7 +71,6 @@ if __name__ == "__main__":
     parser.add_argument("--log-level", default="INFO", help="Logging level")
     parser.add_argument("--chunk-size", help="Max number of tokens per context chunk", default=256)
     parser.add_argument("--chunk-overlap", help="Number of tokens shared between adjacent chunks", default=32)
-    parser.add_argument("-s", "--save-final", action="store_true", help="Save final dataset before adding to doc store")
     args = parser.parse_args()
 
     loop = asyncio.get_event_loop()

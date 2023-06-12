@@ -19,7 +19,7 @@ from llm.utils.enum import StrEnum
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CLASS_NAME = "Default"
+DEFAULT_INDEX_NAME = "Documentation"
 
 
 class DataFields(StrEnum):
@@ -41,7 +41,7 @@ class DocStore:
         self,
         embedding: QAEmbeddings,
         weaviate_client: Optional[weaviate.Client] = None,
-        default_class_name: str = DEFAULT_CLASS_NAME,
+        index_name: str = DEFAULT_INDEX_NAME,
     ) -> None:
         """
         Manage weaviate vector/doc store with custom embeddings
@@ -49,13 +49,12 @@ class DocStore:
         if weaviate_client is None:
             weaviate_client = init_weaviate()
         self.weaviate_client = weaviate_client
-        self.default_class_name = default_class_name
+        self.index_name = index_name
         self.embedding = embedding
 
     def add_dataset(
         self,
         dataset: Dataset,
-        class_name: Optional[str] = None,
         batch_size: int = 1000,
         has_uuids: bool = True,
     ):
@@ -67,52 +66,46 @@ class DocStore:
 
             ids = self._add_embedded(
                 data_objects=data_objects,
-                vectors=embeddings,
+                embeddings=embeddings,
                 uuids=uuids,
-                class_name=class_name,
             )
             object_ids.append(ids)
 
         self._validate_dataset(dataset)
-        class_name = class_name or self.default_class_name
         dataset.map(_add_batch, batched=True, batch_size=batch_size)
         return object_ids
 
     def add_texts(
         self,
-        texts: Iterable[str],
+        texts: List[str],
         metadatas: Optional[List[Dict]] = None,
+        embeddings: Optional[List[List[float]]] = None,
         uuids: Optional[List[str]] = None,
-        class_name: Optional[str] = None,
     ) -> List[str]:
-        if not isinstance(texts, list):
-            texts = list(texts)
-
-        vectors = self.embedding.embed_documents(texts)
+        if embeddings is None:
+            embeddings = self.embedding.embed_documents(texts)
         data_objects = [{} for _ in range(len(texts))]
         for i, text in enumerate(texts):
             data_objects[i][DataFields.TEXT] = text
             if metadatas:
                 data_objects[i].update(metadatas[i])
 
-        return self._add_embedded(data_objects, vectors, uuids=uuids, class_name=class_name)
+        return self._add_embedded(data_objects, embeddings, uuids=uuids)
 
     def _add_embedded(
         self,
         data_objects: List[Dict[str, Any]],
-        vectors: List[List[float]],
+        embeddings: List[List[float]],
         uuids: Optional[List[str]] = None,
-        class_name: Optional[str] = None,
     ) -> List[str]:
         object_ids = []
-        class_name = class_name or self.default_class_name
         with self.weaviate_client.batch as batch:
-            for i, (data_object, vector) in enumerate(zip(data_objects, vectors)):
+            for i, (data_object, embedding) in enumerate(zip(data_objects, embeddings)):
                 object_id = batch.add_data_object(
                     data_object=data_object,
-                    class_name=class_name,
+                    class_name=self.index_name,
                     uuid=uuids[i] if uuids else None,
-                    vector=vector,
+                    vector=embedding,
                 )
                 object_ids.append(object_id)
         return object_ids
@@ -120,19 +113,21 @@ class DocStore:
     def search(
         self,
         question: str,
-        class_name: Optional[str] = None,
         top_k: int = 3,
         include_fields: Optional[List[str]] = None,
         include_additional: Optional[List[str]] = None,
-    ):
-        class_name = class_name or self.default_class_name
-        fields = set([str(DataFields.TEXT), *(include_fields or [])])
-        additional = set(["id", "distance", *(include_additional or [])])
+    ) -> List[Dict[str, Any]]:
+        fields = set([str(DataFields.TEXT)])
+        additional = set([str(DataFields.ID), "distance"])
+        if include_fields:
+            fields.update(include_fields)
+        if include_additional:
+            additional.update(include_additional)
 
         vector = self.embedding.embed_query(question)
         results = (
             self.weaviate_client.query
-            .get(class_name, list(fields))
+            .get(self.index_name, list(fields))
             .with_additional(list(additional))
             .with_near_vector({"vector": vector})
             .with_limit(top_k)
@@ -141,10 +136,9 @@ class DocStore:
         if "data" not in results:
             raise Exception(results)
 
-        data_objects = results["data"]["Get"][class_name]
+        data_objects = results["data"]["Get"][self.index_name]
         for data in data_objects:
             _additional = data.pop("_additional")
-            data[DataFields.ID] = _additional.pop("id")
             data.update(_additional)
 
         return data_objects
@@ -307,18 +301,18 @@ class DocStore:
             if field not in given:
                 raise ValueError(f"Invalid dataset. Expected fields: {expected}. Given: {given}")
 
-    def as_vector_store(self, class_name: Optional[str] = None, **kwargs) -> Weaviate:
+    def as_vector_store(self, **kwargs) -> Weaviate:
         kwargs.setdefault("by_text", False)
         return Weaviate(
             self.weaviate_client,
-            index_name=class_name or self.default_class_name,
+            index_name=self.index_name,
             text_key=DataFields.TEXT,
             embedding=self.embedding,
             **kwargs,
         )
 
-    def as_retriever(self, class_name: Optional[str] = None, **kwargs: Any) -> VectorStoreRetriever:
-        return self.as_vector_store(class_name=class_name).as_retriever(**kwargs)
+    def as_retriever(self, **kwargs: Any) -> VectorStoreRetriever:
+        return self.as_vector_store().as_retriever(**kwargs)
 
 
 def init_weaviate(wait_timeout: int = 60, **kwargs) -> weaviate.Client:
@@ -338,72 +332,6 @@ def init_weaviate(wait_timeout: int = 60, **kwargs) -> weaviate.Client:
                     f"Timed out waiting for weaviate to be ready after {wait_timeout} seconds"
                 )
     return client
-
-
-class WeaviateBatched(Weaviate):
-    def __init__(
-        self,
-        client: Optional[weaviate.Client] = None,
-        index_name: str = DEFAULT_CLASS_NAME,
-        text_field: str = "text",
-        embedding: Optional[Embeddings] = None,
-        attributes: Optional[List[str]] = None,
-        relevance_score_fn: Optional[Callable[[float], float]] = _default_score_normalizer,
-        by_text: bool = True,
-    ):
-        client = client or weaviate.Client(embedded_options=EmbeddedOptions())
-        client.is_ready
-        super().__init__(
-            client,
-            index_name,
-            text_field,
-            embedding=embedding,
-            attributes=attributes,
-            relevance_score_fn=relevance_score_fn,
-            by_text=by_text,
-        )
-
-    def add_texts(
-        self,
-        texts: Iterable[str],
-        metadatas: Optional[List[dict]] = None,
-        **kwargs: Any,
-    ) -> List[str]:
-        """
-        Upload texts with metadata (properties) to Weaviate.
-
-        Updated from original function to take advantage of batched embedding.
-        """
-        ids = []
-        if not isinstance(texts, list):
-            texts = list(texts)
-
-        if self._embedding:
-            vectors = self._embedding.embed_documents(texts)
-        else:
-            vectors = [None] * len(texts)
-
-        with self._client.batch as batch:
-            for i, (text, vector) in enumerate(zip(texts, vectors)):
-                data_properties = {self._text_key: text}
-                if metadatas is not None:
-                    for key, val in metadatas[i].items():
-                        data_properties[key] = _json_serializable(val)
-
-                _id = batch.add_data_object(
-                    data_object=data_properties,
-                    class_name=self._index_name,
-                    uuid=kwargs["uuids"][i] if "uuids" in kwargs else None,
-                    vector=vector,
-                )
-                ids.append(_id)
-        return ids
-
-
-def _json_serializable(value: Any) -> Any:
-    if isinstance(value, datetime):
-        return value.isoformat()
-    return value
 
 
 def to_row_format(batch: Dict[str, List[Any]]) -> List[Dict[str, Any]]:

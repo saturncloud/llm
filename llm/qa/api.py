@@ -6,14 +6,14 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse, FileResponse
 import uvicorn
 
-from llm.qa.retriever import Retriever
+from llm.qa.document_store import DocStore
+from llm.qa.embedding import QAEmbeddings
 from llm.qa.model import BertQA
 from llm.qa.jobs.scrape import scrape_dataset
 
-
 app = FastAPI()
 bert_qa = BertQA()
-retriever = Retriever()
+docstore = DocStore(QAEmbeddings())
 
 
 @dataclass
@@ -43,12 +43,12 @@ def index():
 
 @app.post("/api/question")
 def post_query(body: QuestionBody):
-    results = retriever.search(body.question, body.dataset_name, body.top_k * 2)
-    contexts = [r.text for r in results]
+    results = docstore.search(body.question, body.top_k * 2, include_fields=["source"])
+    contexts = [r["text"] for r in results]
 
     topk_answers = bert_qa.topk_answers(body.question, contexts, body.top_k)
     answers = [
-        Answer(text, results[i].source if i >=0 else "", score)
+        Answer(text, results[i].get("source", "") if i >=0 else "", score)
         for text, score, i in topk_answers
     ]
 

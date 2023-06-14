@@ -2,17 +2,15 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime
 import logging
-from typing import Any, Callable, Dict, Iterable, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from uuid import uuid4
 from time import sleep
 
 from datasets import Dataset
 import weaviate
-from weaviate.embedded import EmbeddedOptions
 
-from langchain.embeddings.base import Embeddings
-from langchain.vectorstores.base import VectorStoreRetriever, VectorStore
-from langchain.vectorstores.weaviate import Weaviate, _default_score_normalizer
+from langchain.vectorstores.base import VectorStoreRetriever
+from langchain.vectorstores.weaviate import Weaviate
 
 from llm.qa.embedding import TextSplitter, QAEmbeddings
 from llm.utils.enum import StrEnum

@@ -4,31 +4,32 @@ import streamlit as st
 from llm.qa import model_configs
 from llm.qa.document_store import DocStore
 from llm.qa.embedding import QAEmbeddings
-from llm.qa.fastchatter import InferenceEngine, QASession
+from llm.qa.fastchatter import InferenceEngine, QASession, QueuedEngine, FastchatEngine
 
 st.set_page_config(page_title="pubmed chat", page_icon=":robot_face:", layout='wide')
 model_config = model_configs.VICUNA
 
 
 @st.cache_resource
-def get_inference_engine():
+def get_inference_engine() -> QueuedEngine:
     # Chat model shared by all streamlit sessions
-    engine = InferenceEngine(model_configs.VICUNA)
-    engine.watch()
-    return engine
+    model, tokenizer = model_config.load()
+    engine = FastchatEngine(model, tokenizer, max_length=model_config.max_length)
+    # Wrap with QueuedEngine so each streamlit session has dedicated access during inference
+    return QueuedEngine(engine)
 
 
 @st.cache_resource
-def get_docstore():
+def get_docstore() -> DocStore:
     # DocStore shared by all streamlit sessions
     # TODO: index handling
     return DocStore(QAEmbeddings(), index_name="KubernetesConcepts")
 
 
-def get_qa_session(engine: InferenceEngine, docstore: DocStore) -> QASession:
+def get_qa_session(engine: QueuedEngine, docstore: DocStore) -> QASession:
     # Conversation/contexts for each streamlit session
     if "qa_session" not in st.session_state:
-        qa_session = QASession(engine, docstore)
+        qa_session = QASession(engine, docstore, model_config.new_conversation())
         st.session_state["qa_session"] = qa_session
         return qa_session
     return st.session_state["qa_session"]

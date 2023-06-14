@@ -2,12 +2,12 @@ from __future__ import annotations
 from copy import deepcopy
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from textwrap import dedent
 
 
 @dataclass
-class QAPrompt:
+class Prompt:
     template: str = ""
     inputs: List[str] = field(default_factory=list)
     default_kwargs: Dict[str, Any] = field(default_factory=dict)
@@ -25,15 +25,28 @@ class QAPrompt:
         return self.template.format(**kwargs)
 
 
-ZERO_SHOT = QAPrompt(
+@dataclass
+class ContextPrompt(Prompt):
+    default_context_label: str = "Context"
+
+    def render(self, contexts: Optional[List[str]] = None, context_label: Optional[str] = None, **kwargs) -> str:
+        context_label = context_label or self.default_context_label
+        if "context_label" in self.inputs:
+            kwargs["context_label"] = context_label
+        prompt = super().render(**kwargs)
+
+        for context in contexts or []:
+            prompt += f"\n{context_label}: {context.strip()}"
+        return prompt
+
+
+ZERO_SHOT = ContextPrompt(
     template="""
     Given the following contexts and a question, create a final answer. Only use the given context to arrive at your answer. If you don't know the answer, just say that you don't know. Don't try to make up an answer.
-    {context}
-    """,
-    inputs=["context"],
+    """
 )
 
-FEW_SHOT = QAPrompt(
+FEW_SHOT = ContextPrompt(
     template="""
     Given the following contexts and a question, create a final answer. Only use the given context to arrive at your answer. If you don't know the answer, just say that you don't know. Don't try to make up an answer.
     Example:
@@ -55,16 +68,14 @@ FEW_SHOT = QAPrompt(
     {roles[1]}: The Advanced Research Projects Agency for Health will drive breakthroughs in cancer, Alzheimer's, diabetes, and more.
     {roles[0]}:
     =========
-    {context}
     """,
-    inputs=["roles", "context_label", "context"],
+    inputs=["roles", "context_label"],
     default_kwargs={
         "roles": ["Question", "Answer"],
-        "context_label": "Context"
     },
 )
 
-INSTRUCTION = QAPrompt(
+INSTRUCTION = Prompt(
     template="""
     Below is an instruction that describes a task. Write a response that appropriately completes the request.
     ### Instruction:
@@ -73,12 +84,12 @@ INSTRUCTION = QAPrompt(
     inputs=["instruction"],
 )
 
-INSTRUCTION_ZERO_SHOT = QAPrompt(
+INSTRUCTION_ZERO_SHOT = ContextPrompt(
     template=INSTRUCTION.render(instruction=ZERO_SHOT.template),
     inputs=deepcopy(ZERO_SHOT.inputs)
 )
 
-INSTRUCTION_FEW_SHOT = QAPrompt(
+INSTRUCTION_FEW_SHOT = ContextPrompt(
     template=INSTRUCTION.render(instruction=FEW_SHOT.template),
     inputs=deepcopy(FEW_SHOT.inputs),
     default_kwargs=deepcopy(FEW_SHOT.default_kwargs),

@@ -46,11 +46,9 @@ class ModelConfig:
     merge_defaults: bool = True
 
     def __post_init__(self):
-        if not self.merge_defaults:
-            return
-
-        self.model_kwargs = merge_dict(self.model_kwargs, default_model_kwargs)
-        self.tokenizer_kwargs = merge_dict(self.tokenizer_kwargs, default_tokenizer_kwargs)
+        if self.merge_defaults:
+            self.model_kwargs = merge_dict(self.model_kwargs, default_model_kwargs)
+            self.tokenizer_kwargs = merge_dict(self.tokenizer_kwargs, default_tokenizer_kwargs)
 
     def load(
         self,
@@ -72,11 +70,9 @@ class ChatModelConfig(ModelConfig):
     context_label: str = "Context"
 
     def __post_init__(self):
-        if not self.merge_defaults:
-            return
-        super().__post_init__()
-
-        self.conversation_kwargs = merge_dict(self.conversation_kwargs, default_conversation_kwargs)
+        if self.merge_defaults:
+            super().__post_init__()
+            self.conversation_kwargs = merge_dict(self.conversation_kwargs, default_conversation_kwargs)
 
     def new_conversation(self) -> Conversation:
         kwargs = {

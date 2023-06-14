@@ -1,27 +1,78 @@
+from queue import Queue
+from threading import Thread
 from typing import Any, Dict, Iterable, List, Optional
-from threading import Lock
 
 from fastchat.serve.inference import generate_stream
 from fastchat.conversation import Conversation
-import torch
 
 from llm.qa import model_configs
-from llm.qa.document_store import DocStore, DEFAULT_INDEX_NAME
-from llm.qa.embedding import QAEmbeddings
+from llm.qa.document_store import DocStore
 from llm.qa.prompts import QAPrompt
 
 
-class MultithreadChat:
+class StreamRequest:
+    """
+    A generate_stream request to be enqueued
+    """
+    def __init__(self, prompt: str, **kwargs) -> None:
+        self.prompt = prompt
+        self.kwargs = kwargs
+        self.output: Queue[Optional[str]] = Queue()
+
+
+class InferenceEngine:
+    """
+    Manages request and response queues for thread-safe chat inference
+    """
+
     def __init__(
         self,
         model_config: model_configs.ChatModelConfig = model_configs.VICUNA,
+        queue: Optional[Queue[StreamRequest]] = None,
     ):
         self.model_config = model_config
         self.model, self.tokenizer = self.model_config.load()
-        self.lock = Lock()
+        self.queue: Queue[StreamRequest] = queue or Queue()
+        self.watch_thread: Optional[Thread] = None
 
-    def new_conversation(self) -> Conversation:
-        return self.model_config.new_conversation()
+    def request(self, prompt: str, **kwargs) -> Iterable[str]:
+        """
+        Enqueue generation request, and dequeue the output stream until completed
+        """
+        if not self.watch_thread or not self.watch_thread.is_alive():
+            raise Exception("Watch thread is not running")
+
+        request = StreamRequest(prompt, **kwargs)
+        self.queue.put(request)
+        while True:
+            text = request.output.get()
+            request.output.task_done()
+            if text is None:
+                # Stream completed
+                break
+            else:
+                # Yield current output
+                yield text
+
+    def watch(self):
+        """
+        Spawn a thread to watch the request queue and generate responses
+
+        Should only be called from the main thread
+        """
+        def _watch():
+            while True:
+                request = self.queue.get()
+                for text in self.generate_stream(request.prompt, **request.kwargs):
+                    request.output.put(text)
+
+                # None indicates to the requester that the stream is completed
+                request.output.put(None)
+
+        if self.watch_thread is not None and self.watch_thread.is_alive():
+            raise Exception("Watch already started")
+        self.watch_thread = Thread(None, _watch, daemon=True)
+        self.watch_thread.start()
 
     def generate_stream(
         self,
@@ -33,6 +84,9 @@ class MultithreadChat:
         echo: bool = False,
         **kwargs,
     ) -> Iterable[str]:
+        """
+        Stream generated text by token
+        """
         gen_params = {
             "prompt": prompt,
             "temperature": temperature,
@@ -43,26 +97,28 @@ class MultithreadChat:
             **kwargs,
         }
 
-        with self.lock:
-            output_stream = generate_stream(
-                self.model,
-                self.tokenizer,
-                gen_params,
-                self.model.device,
-                context_len=self.model_config.max_length,
-            )
+        output_stream = generate_stream(
+            self.model,
+            self.tokenizer,
+            gen_params,
+            self.model.device,
+            context_len=self.model_config.max_length,
+        )
 
-            for outputs in output_stream:
-                output_text = outputs["text"].strip()
-                yield output_text
+        for outputs in output_stream:
+            output_text = outputs["text"].strip()
+            yield output_text
+
+    def new_conversation(self) -> Conversation:
+        return self.model_config.new_conversation()
 
 
 class QASession:
-    def __init__(self, chat: MultithreadChat, docstore: DocStore, prompt: Optional[QAPrompt] = None, debug: bool = False):
-        self.chat = chat
+    def __init__(self, engine: InferenceEngine, docstore: DocStore, prompt: Optional[QAPrompt] = None, debug: bool = False):
+        self.engine = engine
         self.docstore = docstore
-        self.conv = chat.new_conversation()
-        self.prompt = prompt or chat.model_config.default_prompt
+        self.conv = engine.new_conversation()
+        self.prompt = prompt or engine.model_config.default_prompt
         self.debug = debug
         self.results: List[Dict[str, Any]] = []
 
@@ -79,7 +135,7 @@ class QASession:
         prompt = self.conv.get_prompt()
         kwargs.setdefault("stop", self.conv.stop_str)
         kwargs.setdefault("stop_token_ids", self.conv.stop_token_ids)
-        for output_text in self.chat.generate_stream(prompt, **kwargs):
+        for output_text in self.engine.request(prompt, **kwargs):
             yield output_text
 
         self.conv.messages[-1][-1] = output_text.strip()
@@ -92,13 +148,13 @@ class QASession:
         context = ""
         for c in contexts:
             text = c.strip()
-            context += f"{self.chat.model_config.context_label}: {text}\n\n"
+            context += f"{self.engine.model_config.context_label}: {text}\n\n"
 
         prompt_kwargs = {}
         if "roles" in self.prompt.inputs:
             prompt_kwargs["roles"] = self.conv.roles
         if "context_label" in self.prompt.inputs:
-            prompt_kwargs["context_label"] = self.chat.model_config.context_label
+            prompt_kwargs["context_label"] = self.engine.model_config.context_label
 
         self.conv.system = self.prompt.render(context=context, **prompt_kwargs)
 

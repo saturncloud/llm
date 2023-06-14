@@ -4,15 +4,18 @@ import streamlit as st
 from llm.qa import model_configs
 from llm.qa.document_store import DocStore
 from llm.qa.embedding import QAEmbeddings
-from llm.qa.fastchatter import MultithreadChat, QASession
+from llm.qa.fastchatter import InferenceEngine, QASession
 
 st.set_page_config(page_title="pubmed chat", page_icon=":robot_face:", layout='wide')
+model_config = model_configs.VICUNA
 
 
 @st.cache_resource
-def get_chatter():
+def get_inference_engine():
     # Chat model shared by all streamlit sessions
-    return MultithreadChat(model_configs.VICUNA)
+    engine = InferenceEngine(model_configs.VICUNA)
+    engine.watch()
+    return engine
 
 
 @st.cache_resource
@@ -22,10 +25,10 @@ def get_docstore():
     return DocStore(QAEmbeddings(), index_name="KubernetesConcepts")
 
 
-def get_qa_session(chatter: MultithreadChat, docstore: DocStore) -> QASession:
+def get_qa_session(engine: InferenceEngine, docstore: DocStore) -> QASession:
     # Conversation/contexts for each streamlit session
     if "qa_session" not in st.session_state:
-        qa_session = QASession(chatter, docstore)
+        qa_session = QASession(engine, docstore)
         st.session_state["qa_session"] = qa_session
         return qa_session
     return st.session_state["qa_session"]
@@ -42,9 +45,9 @@ def apply_filter():
     qa_session.append_question(user_input)
 
 
-chatter = get_chatter()
+engine = get_inference_engine()
 docstore = get_docstore()
-qa_session = get_qa_session(chatter, docstore)
+qa_session = get_qa_session(engine, docstore)
 output = st.text('')
 included: List[bool] = []
 

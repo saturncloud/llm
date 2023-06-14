@@ -1,8 +1,8 @@
 from __future__ import annotations
-from copy import copy, deepcopy
+from copy import deepcopy
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from textwrap import dedent
 
 
@@ -14,9 +14,8 @@ class QAPrompt:
     dedent: bool = True
 
     def __post_init__(self):
-        if not self.dedent:
-            return
-        self.template = dedent(self.template).strip()
+        if self.dedent:
+            self.template = dedent(self.template).strip()
 
     def render(self, **kwargs) -> str:
         kwargs = {

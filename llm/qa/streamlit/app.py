@@ -4,7 +4,7 @@ import streamlit as st
 from llm.qa import model_configs
 from llm.qa.document_store import DocStore
 from llm.qa.embedding import QAEmbeddings
-from llm.qa.fastchatter import InferenceEngine, QASession, QueuedEngine, FastchatEngine
+from llm.qa.fastchatter import QASession, QueuedEngine, FastchatEngine
 
 st.set_page_config(page_title="pubmed chat", page_icon=":robot_face:", layout='wide')
 model_config = model_configs.VICUNA

@@ -3,15 +3,16 @@ from abc import ABC, abstractmethod
 
 from queue import Queue
 from threading import Thread
-from typing import Any, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
 from fastchat.serve.inference import generate_stream
 from fastchat.conversation import Conversation
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
-
-from llm.qa import model_configs
-from llm.qa.document_store import DocStore
+from llm.qa.model_configs import ChatModelConfig
 from llm.qa.prompts import ZERO_SHOT, ContextPrompt
+
+if TYPE_CHECKING:
+    from llm.qa.document_store import DocStore
 
 
 class InferenceEngine(ABC):
@@ -128,6 +129,18 @@ class QASession:
         self.prompt = prompt
         self.debug = debug
         self.results: List[Dict[str, Any]] = []
+
+    @classmethod
+    def from_model_config(
+        cls,
+        model_config: ChatModelConfig,
+        engine: InferenceEngine,
+        docstore: DocStore,
+        prompt: Optional[ContextPrompt] = None,
+        **kwargs,
+    ) -> QASession:
+        conv = model_config.new_conversation()
+        return cls(engine, docstore, conv, prompt or model_config.default_prompt, **kwargs)
 
     def append_question(self, question: str):
         self.conv.append_message(self.conv.roles[0], question)

@@ -1,8 +1,9 @@
+import os
 from typing import List, Optional
 from urllib.parse import urlparse
 
 import click
-from datasets import load_dataset
+from datasets import load_dataset, Dataset
 
 from llm.qa.crawler import DocSpider
 from llm.qa.embedding import QAEmbeddings, RecursiveCharacterTextSplitter
@@ -42,7 +43,7 @@ async def scrape(
         text_css=text_css,
         settings={"DEPTH_LIMIT": max_depth, "CONCURRENT_REQUESTS": 20, "LOG_LEVEL": "INFO"},
     )
-    dataset.to_parquet(output_path)
+    save_dataset(dataset, output_path)
 
 
 @data_cli.command(short_help="Format text and ID fields of the dataset to known keys, generating a UUID for each row if needed")
@@ -63,13 +64,14 @@ def format(
     dataset = load_dataset(input_type, data_files=[input_path])
     embedding = QAEmbeddings()
     parser = DatasetParser(embedding)
+
     dataset = parser.format(
         dataset,
         batch_size=batch_size,
         source_text_field=source_text_field,
         source_id_field=source_id_field,
     )
-    dataset.to_parquet(output_path)
+    save_dataset(dataset, output_path)
 
 
 @data_cli.command(short_help="Split the dataset on its text field such that each chunk is of a given maximum size")
@@ -96,8 +98,9 @@ def split(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
     )
+
     dataset = parser.split(dataset, splitter, batch_size=batch_size)
-    dataset.to_parquet(output_path)
+    save_dataset(dataset, output_path)
 
 
 @data_cli.command(short_help="Embed the text field of the dataset for semantic search, and save the result")
@@ -116,8 +119,9 @@ def embed(
     dataset = load_dataset(input_type, data_files=[input_path])
     embedding = QAEmbeddings()
     parser = DatasetParser(embedding)
+
     dataset = parser.embed(dataset, batch_size=batch_size, devices=devices)
-    dataset.to_parquet(output_path)
+    save_dataset(dataset, output_path)
 
 
 @data_cli.command(short_help="Full processing pipeline for getting a document dataset ready to be indexed")
@@ -136,10 +140,11 @@ def pipeline(input_path: str, output_path: str, input_type: str, batch_size: int
         chunk_size=256,
         chunk_overlap=32,
     )
+
     dataset = parser.format(dataset, batch_size=batch_size)
     dataset = parser.split(dataset, splitter, batch_size=batch_size)
     dataset = parser.embed(dataset, batch_size=batch_size, devices=devices)
-    dataset.to_parquet(output_path)
+    save_dataset(dataset, output_path)
 
 
 @data_cli.command(short_help="Add the dataset to the default doc store")
@@ -157,6 +162,14 @@ def index(input_path: str, input_type: str, batch_size: int, index_name: Optiona
         kwargs["index_name"] = index_name
     docstore = DocStore(embedding, **kwargs)
     docstore.add_dataset(dataset, batch_size=batch_size)
+
+
+def save_dataset(dataset: Dataset, path: str) -> bool:
+    if os.path.exists(path):
+        if not click.confirm(f"File path {path} already exists. Would you like to overwrite it?"):
+            return False
+    dataset.to_parquet(path)
+    return True
 
 
 if __name__ == "__main__":

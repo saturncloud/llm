@@ -96,12 +96,11 @@ class QueuedEngine(InferenceEngine):
         while True:
             text = request.output.get()
             request.output.task_done()
-            if text is None:
+            if text is not None:
+                yield text
+            else:
                 # Stream completed
                 break
-            else:
-                # Yield current output
-                yield text
 
 
 class StreamRequest:

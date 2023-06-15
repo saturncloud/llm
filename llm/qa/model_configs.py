@@ -67,7 +67,6 @@ class ChatModelConfig(ModelConfig):
     max_length: int = 2048
     conversation_kwargs: Dict[str, Any] = field(default_factory=dict)
     default_prompt: prompts.ContextPrompt = prompts.ZERO_SHOT
-    context_label: str = "Context"
 
     def __post_init__(self):
         if self.merge_defaults:

@@ -4,6 +4,6 @@ conda-update:
 	mamba env create -n bert-qa --file environment.yaml --force
 	mamba env update -n bert-qa --file environment.test.yaml
 
-.PHONY: api
+.PHONY: streamlit-qa
 api:
-	python -m bert_qa.api
+	streamlit run llm/qa/streamlit/app.py

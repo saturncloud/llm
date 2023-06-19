@@ -1,10 +1,16 @@
-from typing import List
+from typing import List, Optional
 import streamlit as st
 
+from langchain.vectorstores.base import VectorStore
+
 from llm.qa import model_configs
-from llm.qa.document_store import DocStore
 from llm.qa.embedding import QAEmbeddings
 from llm.qa.fastchatter import QASession, QueuedEngine, FastchatEngine
+from llm.qa.parser import DataFields
+from llm.qa.vector_store import DatasetVectorStore
+from llm.utils.dataset import load_data
+
+DATASET_PATH = "/home/jovyan/workspace/contexts/KubernetesConcepts/sentence-transformers-multi-qa-mpnet-base-dot-v1.jsonl"
 
 st.set_page_config(page_title="pubmed chat", page_icon=":robot_face:", layout="wide")
 model_config = model_configs.VICUNA
@@ -20,16 +26,14 @@ def get_inference_engine() -> QueuedEngine:
 
 
 @st.cache_resource
-def get_docstore() -> DocStore:
-    # DocStore shared by all streamlit sessions
-    # TODO: index handling
-    return DocStore(QAEmbeddings(), index_name="KubernetesConcepts")
+def get_vector_store(dataset_path: str, index_path: Optional[str] = None) -> DatasetVectorStore:
+    dataset = load_data(dataset_path)
+    return DatasetVectorStore(dataset, QAEmbeddings(), index_path=index_path)
 
 
-def get_qa_session(engine: QueuedEngine, docstore: DocStore) -> QASession:
+def get_qa_session(engine: QueuedEngine, vector_store: VectorStore) -> QASession:
     # Conversation/contexts for each streamlit session
     if "qa_session" not in st.session_state:
-        vector_store = docstore.as_vector_store(attributes=["source", "title"])
         qa_session = QASession(engine, vector_store, model_config.new_conversation())
         st.session_state["qa_session"] = qa_session
         return qa_session
@@ -47,9 +51,9 @@ def apply_filter():
     qa_session.append_question(user_input)
 
 
+vector_store = get_vector_store(DATASET_PATH)
 engine = get_inference_engine()
-docstore = get_docstore()
-qa_session = get_qa_session(engine, docstore)
+qa_session = get_qa_session(engine, vector_store)
 output = st.text("")
 included: List[bool] = []
 
@@ -72,7 +76,7 @@ if qa_session.results:
             include = st.checkbox("include in chat context", key=idx, value=True)
             included.append(include)
             st.write(doc.page_content)
-            st.write(doc.metadata)
+            st.write({k: v for k, v in doc.metadata.items() if k != DataFields.EMBEDDING})
             st.divider()
         checklist_submit_button = st.form_submit_button(label="Filter")
 

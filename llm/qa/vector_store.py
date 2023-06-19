@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Any, Iterable, List, Optional
 from datasets import Dataset
 
+import numpy as np
+
 from langchain.docstore.document import Document
 from langchain.embeddings.base import Embeddings
 from langchain.vectorstores.base import VectorStore
@@ -54,12 +56,13 @@ class DatasetVectorStore(VectorStore):
         self, query: str, k: int = 4, **kwargs: Any
     ) -> List[Document]:
         query_embedding = self.embedding.embed_query(query)
-        results = self.dataset.search(self.index_name, query_embedding, k, **kwargs)
+        np_embedding = np.asarray(query_embedding, dtype=np.float32)
+        results = self.dataset.search(self.index_name, np_embedding, k, **kwargs)
 
         documents: List[Document] = []
         score_attr = "score" if "score" not in self.dataset.column_names else "_score"
-        for i, score in zip(results.indices):
-            row = self.dataset[i]
+        for i, score in zip(results.indices, results.scores):
+            row = self.dataset[int(i)]
             text = row[DataFields.TEXT]
             metadata = {k: v for k, v in row.items() if k != DataFields.TEXT}
             metadata[score_attr] = score

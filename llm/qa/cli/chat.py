@@ -1,20 +1,30 @@
+import os
+from typing import Optional
 import click
 
 from llm.qa import model_configs
 from llm.qa.embedding import QAEmbeddings
 from llm.qa.fastchatter import FastchatEngine, QASession
+from llm.qa.vector_store import DatasetVectorStore
+from llm.utils.dataset import load_data
 
 
 @click.command("chat", short_help="Conversational question answering from semantic search")
-@click.argument("index-name")
-def chat_cli(index_name: str):
-    from llm.qa.document_store import DocStore
+@click.argument("input-path", required=True)
+@click.option("--input-type", help="Input file type. Defaults to file extension.", default=None)
+@click.option("--index-path", help="Path to a pre-built FAISS index over the dataset", default=None)
+def chat_cli(input_path: str, input_type: Optional[str], index_path: Optional[str]):
+    dataset = load_data(input_path, input_type)
+    if index_path is None:
+        _index_path = input_path.rsplit(".", 1)[-1] + ".faiss"
+        if os.path.isfile(_index_path):
+            index_path = _index_path
 
     model_config = model_configs.VICUNA
     model, tokenizer = model_config.load()
     engine = FastchatEngine(model, tokenizer, model_config.max_length)
-    docstore = DocStore(QAEmbeddings(), index_name=index_name)
-    qa_session = QASession.from_model_config(model_config, engine, docstore.as_vector_store())
+    vector_store = DatasetVectorStore(dataset, QAEmbeddings(), index_path=index_path)
+    qa_session = QASession.from_model_config(model_config, engine, vector_store)
 
     while True:
         input_text = input("Question: ")

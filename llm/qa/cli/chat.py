@@ -14,7 +14,7 @@ def chat_cli(index_name: str):
     model, tokenizer = model_config.load()
     engine = FastchatEngine(model, tokenizer, model_config.max_length)
     docstore = DocStore(QAEmbeddings(), index_name=index_name)
-    qa_session = QASession.from_model_config(model_config, engine, docstore)
+    qa_session = QASession.from_model_config(model_config, engine, docstore.as_vector_store())
 
     while True:
         input_text = input("Question: ")

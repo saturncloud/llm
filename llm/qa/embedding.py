@@ -31,6 +31,11 @@ def parse_device(device: Union[str, int, None] = None) -> str:
 
 
 class QAEmbeddings(Embeddings):
+    context_model: PreTrainedModel
+    context_tokenizer: PreTrainedTokenizerBase
+    question_model: PreTrainedModel
+    question_tokenizer: PreTrainedTokenizerBase
+
     def __init__(
         self,
         context_model: Union[str, PreTrainedModel] = DEFAULT_MODEL,

@@ -135,7 +135,7 @@ class DocStore:
         return Weaviate(
             self.weaviate_client,
             index_name=self.index_name,
-            text_key=DataFields.TEXT,
+            text_key=str(DataFields.TEXT),
             embedding=self.embedding,
             **kwargs,
         )

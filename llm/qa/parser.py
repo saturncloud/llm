@@ -5,11 +5,15 @@ from typing import Any, Dict, List, Optional, Union
 from uuid import uuid4
 
 from datasets import Dataset
+from langchain.embeddings.base import Embeddings
 
 from llm.qa.embedding import TextSplitter, QAEmbeddings
 from llm.utils.enum import StrEnum
 
 logger = logging.getLogger(__name__)
+
+
+DEFAULT_INDEX_NAME = "faiss_embeddings"
 
 
 class DataFields(StrEnum):
@@ -27,8 +31,20 @@ class DataFields(StrEnum):
 
 
 class DatasetParser:
-    def __init__(self, embedding: QAEmbeddings) -> None:
-        self.embedding = embedding
+    """
+    Parse, split, and embed datasets to get them ready for semantic search.
+
+    Pass multiple embedding devices to support multiprocessed embeddings.
+    Each should be running on a different GPU device.
+    """
+    def __init__(self, *embedding_devices: Embeddings) -> None:
+        self.embedding_devices = embedding_devices
+
+    def embedding(self, index: Optional[int] = None):
+        index = index or 0
+        if len(self.embedding_devices) <= index:
+            raise ValueError(f"No embedding device at index {index}")
+        return self.embedding_devices[index]
 
     def format(
         self,
@@ -149,33 +165,66 @@ class DatasetParser:
         self,
         dataset: Dataset,
         batch_size: int = 100,
-        devices: Optional[Union[str, List[Union[str, int]]]] = None,
     ) -> Dataset:
         """
         Compute embeddings for the text field and add to the dataset
-
-        params:
-            devices: List of devices to send the model to for multiprocessing
-                Pass "auto" to use all available CUDA devices
         """
         def _embed_batch(batch: Dict[str, List], rank: Optional[int]) -> Dict:
             texts = batch[DataFields.TEXT]
-            vectors = embedding_devices[rank or 0].embed_documents(texts)
+            embeddings = self.embedding(rank).embed_documents(texts)
             return {
                 **batch,
-                DataFields.EMBEDDING: vectors,
+                DataFields.EMBEDDING: embeddings,
             }
-
-        if devices:
-            embedding_devices = self.embedding.multiprocess(devices)
-        else:
-            embedding_devices = [self.embedding]
 
         self._validate(dataset, exclude=[DataFields.EMBEDDING])
         logger.info("Embedding dataset")
         return dataset.map(
-            _embed_batch, batched=True, batch_size=batch_size, num_proc=len(embedding_devices), with_rank=True
+            _embed_batch, batched=True, batch_size=batch_size, num_proc=len(self.embedding_devices), with_rank=True
         )
+
+    def index(
+        self,
+        dataset: Dataset,
+        index_name: str = DEFAULT_INDEX_NAME,
+        index_path: Optional[str] = None,
+        **kwargs,
+    ) -> Dataset:
+        dataset = dataset.add_faiss_index(str(DataFields.EMBEDDING), index_name)
+        if index_path:
+            dataset.save_faiss_index(index_name, index_path, **kwargs)
+        return dataset
+
+    def create_dataset(
+        self,
+        texts: List[str],
+        metadatas: Optional[List[dict]] = None,
+        uuids: Optional[List[str]] = None,
+        splitter: Optional[TextSplitter] = None,
+        batch_size: int = 100,
+        **kwargs,
+    ) -> Dataset:
+        """
+        Combine data into a document dataset
+        """
+        rows: List[Dict[str, Any]] = [{}] * len(texts)
+        for i, text in enumerate(texts):
+            data = rows[i]
+            data[DataFields.ID] = uuids[i] if uuids else str(uuid4())
+            data[DataFields.TEXT] = text
+            if metadatas:
+                data.update(metadatas[i])
+        dataset = Dataset.from_list(rows, **kwargs)
+
+        dataset = self.format(
+            dataset,
+            batch_size=batch_size,
+            source_text_field=str(DataFields.TEXT),
+            source_id_field=str(DataFields.ID),
+        )
+        if splitter:
+            dataset = self.split(dataset, splitter, batch_size=batch_size)
+        return self.embed(dataset, batch_size=batch_size)
 
     def _validate(self, dataset: Dataset, exclude: Optional[List[str]] = None):
         given = set(dataset.column_names)

@@ -5,5 +5,5 @@ conda-update:
 	mamba env update -n bert-qa --file environment.test.yaml
 
 .PHONY: streamlit-qa
-api:
+streamlit-qa:
 	streamlit run llm/qa/streamlit/app.py

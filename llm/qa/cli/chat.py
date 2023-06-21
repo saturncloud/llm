@@ -10,9 +10,9 @@ from llm.utils.dataset import load_data
 
 
 @click.command("chat", short_help="Conversational question answering from semantic search")
-@click.argument("input-path", required=True)
-@click.option("--input-type", help="Input file type. Defaults to file extension.", default=None)
-@click.option("--index-path", help="Path to a pre-built FAISS index over the dataset", default=None)
+@click.argument("input-path", required=True, envvar="QA_DATASET_PATH")
+@click.option("--input-type", help="Input file type. Defaults to file extension.", default=None, envvar="QA_INPUT_TYPE")
+@click.option("--index-path", help="Path to a pre-built FAISS index over the dataset", default=None, envvar="QA_INDEX_PATH")
 def chat_cli(input_path: str, input_type: Optional[str], index_path: Optional[str]):
     dataset = load_data(input_path, input_type)
     if index_path is None:

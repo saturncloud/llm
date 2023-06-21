@@ -85,7 +85,7 @@ def make_single_jsonl(input_path: str, output_path: str, nprocs: int = 1, titles
 
 
 @pubmed_cli.command()
-@click.argument("input_path")
+@click.argument("input-path")
 @click.option("--nprocs", default=1)
 def list_titles(input_path: str, nprocs: int = 1):
     paths = [join(input_path, x) for x in os.listdir(input_path)]

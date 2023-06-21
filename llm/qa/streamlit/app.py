@@ -1,6 +1,7 @@
+import os
 from typing import List, Optional
-import streamlit as st
 
+import streamlit as st
 from langchain.vectorstores.base import VectorStore
 
 from llm.qa import model_configs
@@ -10,7 +11,8 @@ from llm.qa.parser import DataFields
 from llm.qa.vector_store import DatasetVectorStore
 from llm.utils.dataset import load_data
 
-DATASET_PATH = "/home/jovyan/workspace/contexts/KubernetesConcepts/sentence-transformers-multi-qa-mpnet-base-dot-v1.jsonl"
+QA_DATASET_PATH = os.environ["QA_DATASET_PATH"]
+QA_INDEX_PATH = os.getenv("QA_INDEX_PATH")
 
 st.set_page_config(page_title="pubmed chat", page_icon=":robot_face:", layout="wide")
 model_config = model_configs.VICUNA
@@ -51,7 +53,7 @@ def apply_filter():
     qa_session.append_question(user_input)
 
 
-vector_store = get_vector_store(DATASET_PATH)
+vector_store = get_vector_store(QA_DATASET_PATH)
 engine = get_inference_engine()
 qa_session = get_qa_session(engine, vector_store)
 output = st.text("")

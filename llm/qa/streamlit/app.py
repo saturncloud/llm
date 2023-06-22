@@ -20,7 +20,7 @@ model_config = model_configs.VICUNA
 
 @st.cache_resource
 def get_inference_engine() -> QueuedEngine:
-    # Chat model shared by all streamlit sessions
+    # Load chat model and inference engine. Shared by all sessions
     model, tokenizer = model_config.load()
     engine = FastchatEngine(model, tokenizer, max_length=model_config.max_length)
     # Wrap with QueuedEngine so each streamlit session has dedicated access during inference
@@ -29,12 +29,13 @@ def get_inference_engine() -> QueuedEngine:
 
 @st.cache_resource
 def get_vector_store(dataset_path: str, index_path: Optional[str] = None) -> DatasetVectorStore:
+    # VectorStore for semantic search. Shared by all sessions
     dataset = load_data(dataset_path)
     return DatasetVectorStore(dataset, QAEmbeddings(), index_path=index_path)
 
 
 def get_qa_session(engine: QueuedEngine, vector_store: VectorStore) -> QASession:
-    # Conversation/contexts for each streamlit session
+    # Conversation/contexts for each session
     if "qa_session" not in st.session_state:
         qa_session = QASession(engine, vector_store, model_config.new_conversation())
         st.session_state["qa_session"] = qa_session
@@ -53,8 +54,8 @@ def apply_filter():
     qa_session.append_question(user_input)
 
 
-vector_store = get_vector_store(QA_DATASET_PATH)
 engine = get_inference_engine()
+vector_store = get_vector_store(QA_DATASET_PATH)
 qa_session = get_qa_session(engine, vector_store)
 output = st.text("")
 included: List[bool] = []

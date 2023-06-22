@@ -1,3 +1,4 @@
+from math import e
 from typing import List, Optional
 from urllib.parse import urlparse
 
@@ -116,7 +117,7 @@ def embed(
 ):
     dataset = load_data(input_path, input_type)
     embedding = QAEmbeddings()
-    embedding_devices = embedding.multiprocess(devices) if devices else [embedding]
+    embedding_devices = embedding.multiprocess(*devices) if devices else [embedding]
     parser = DatasetParser(*embedding_devices)
 
     dataset = parser.embed(dataset, batch_size=batch_size)
@@ -132,7 +133,7 @@ def embed(
 def pipeline(input_path: str, output_path: str, input_type: Optional[str], batch_size: int, devices: Optional[List[str]]):
     dataset = load_data(input_path, input_type)
     embedding = QAEmbeddings()
-    embedding_devices = embedding.multiprocess(devices) if devices else [embedding]
+    embedding_devices = embedding.multiprocess(*devices) if devices else [embedding]
     parser = DatasetParser(*embedding_devices)
     splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
         embedding.context_tokenizer,
@@ -143,7 +144,7 @@ def pipeline(input_path: str, output_path: str, input_type: Optional[str], batch
 
     dataset = parser.format(dataset, batch_size=batch_size)
     dataset = parser.split(dataset, splitter, batch_size=batch_size)
-    dataset = parser.embed(dataset, batch_size=batch_size, devices=devices)
+    dataset = parser.embed(dataset, batch_size=batch_size)
     save_data(dataset, output_path)
 
 

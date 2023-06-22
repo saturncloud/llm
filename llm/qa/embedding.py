@@ -1,33 +1,21 @@
 from __future__ import annotations
 import copy
-from copy import deepcopy
 from abc import ABC, abstractmethod
 
 import logging
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Iterable, List, Optional, Sequence, Union
 
 import torch
-from datasets import Dataset
-from transformers import AutoModel, AutoTokenizer, BatchEncoding, PreTrainedTokenizerBase, PreTrainedModel
+from transformers import AutoModel, AutoTokenizer, PreTrainedTokenizerBase, PreTrainedModel
 from langchain.docstore.document import Document
 from langchain.embeddings.base import Embeddings
 from langchain.text_splitter import BaseDocumentTransformer
 
+from llm.utils.devices import model_to_devices, parse_device
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "sentence-transformers/multi-qa-mpnet-base-dot-v1"
-
-
-def parse_device(device: Union[str, int, None] = None) -> str:
-    if device is None:
-        if not torch.cuda.is_available():
-            return "cpu"
-        device = "cuda"
-    if device == "cuda":
-        return f"cuda:{torch.cuda.current_device()}"
-    elif isinstance(device, int):
-        return f"cuda:{device}"
-    return device
 
 
 class QAEmbeddings(Embeddings):
@@ -44,12 +32,17 @@ class QAEmbeddings(Embeddings):
         question_tokenizer: Optional[PreTrainedTokenizerBase] = None,
         device: Union[str, int, None] = None,
     ):
-        self.device = parse_device(device)
+        if device is None:
+            if isinstance(context_model, PreTrainedModel):
+                device = context_model.device
+            elif isinstance(question_model, PreTrainedModel):
+                device = question_model.device
+        device = parse_device(device)
 
         # Load context model/tokenizer
         if isinstance(context_model, str):
-            context_model = AutoModel.from_pretrained(context_model)
-        self.context_model = context_model.to(self.device)
+            context_model = AutoModel.from_pretrained(context_model).to(device)
+        self.context_model = context_model
 
         if context_tokenizer is None:
             context_tokenizer = AutoTokenizer.from_pretrained(context_model.name_or_path)
@@ -57,7 +50,7 @@ class QAEmbeddings(Embeddings):
 
         # Load question model/tokenizer if set, else same as context model
         if isinstance(question_model, str):
-            question_model = AutoModel.from_pretrained(question_model).to(self.device)
+            question_model = AutoModel.from_pretrained(question_model).to(device)
             if question_tokenizer is None:
                 question_tokenizer = AutoTokenizer.from_pretrained(question_model.name_or_path)
         self.question_model = question_model or self.context_model
@@ -65,42 +58,36 @@ class QAEmbeddings(Embeddings):
 
     def multiprocess(
         self,
-        devices: Union[str, List[Union[str, int]]] = "auto",
-        set_start_method: bool = True,
+        *devices: Union[str, int],
+        set_start_method: Optional[bool] = None,
     ) -> List[QAEmbeddings]:
-        if devices == "auto":
-            devices = [f"cuda:{i}" for i in range(torch.cuda.device_count())]
+        embeddings = []
+        if "auto" in devices:
+            # Select all available devices
+            devices = []
+        c_models = model_to_devices(self.context_model, *devices)
+        if self.question_model == self.context_model:
+            q_models = c_models
         else:
-            if not isinstance(devices, list):
-                devices = [devices]
-            devices = [parse_device(device) for device in devices]
+            q_models = model_to_devices(self.question_model, *devices)
 
-        if set_start_method and len(devices) > 1 and torch.cuda.is_available():
+        for c_model, q_model in zip(c_models, q_models):
+            embeddings.append(
+                QAEmbeddings(
+                    context_model=c_model,
+                    question_model=q_model,
+                    context_tokenizer=self.context_tokenizer,
+                    question_tokenizer=self.question_tokenizer,
+                )
+            )
+
+        if set_start_method is None:
+            set_start_method = len(embeddings) > 1 and torch.cuda.is_available()
+        if set_start_method:
             # Required to fork a process using CUDA
             import multiprocess
             multiprocess.set_start_method("spawn")
-
-        embeddings = []
-        for device in devices:
-            if device == self.device:
-                # Reuse self if already loaded on device
-                embeddings.append(self)
-            else:
-                embeddings.append(self.to(device))
         return embeddings
-
-    def to(self, *args, **kwargs) -> QAEmbeddings:
-        context_model = self.context_model.to(*args, **kwargs)
-        if self.context_model != self.question_model:
-            question_model = self.question_model.to(*args, **kwargs)
-        else:
-            question_model = context_model
-        return QAEmbeddings(
-            context_model=context_model,
-            question_model=question_model,
-            context_tokenizer=self.context_tokenizer,
-            question_tokenizer=self.question_tokenizer,
-        )
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         return self._embed(texts).tolist()
@@ -118,7 +105,7 @@ class QAEmbeddings(Embeddings):
             return_attention_mask=True,
             return_tensors="pt",
             verbose=False,
-        ).to(self.device)
+        ).to(model.device)
         with torch.no_grad():
             outputs = model(inputs.input_ids, attention_mask=inputs.attention_mask)
         return self.sentence_pooling(outputs)

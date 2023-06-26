@@ -16,6 +16,7 @@ from llm.utils.devices import model_to_devices, parse_device
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "sentence-transformers/multi-qa-mpnet-base-dot-v1"
+PUBMED_MODEL = "pritamdeka/S-PubMedBert-MS-MARCO"
 
 
 class QAEmbeddings(Embeddings):

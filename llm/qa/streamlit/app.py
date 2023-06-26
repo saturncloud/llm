@@ -5,7 +5,7 @@ import streamlit as st
 from langchain.vectorstores.base import VectorStore
 
 from llm.qa import model_configs
-from llm.qa.embedding import QAEmbeddings
+from llm.qa.embedding import QAEmbeddings, PUBMED_MODEL
 from llm.qa.fastchatter import QASession, QueuedEngine, FastchatEngine
 from llm.qa.parser import DataFields
 from llm.qa.vector_store import DatasetVectorStore
@@ -13,6 +13,7 @@ from llm.utils.dataset import load_data
 
 QA_DATASET_PATH = os.environ["QA_DATASET_PATH"]
 QA_INDEX_PATH = os.getenv("QA_INDEX_PATH")
+QA_CONTEXT_MODEL = os.getenv("QA_CONTEXT_MODEL", PUBMED_MODEL)
 
 st.set_page_config(page_title="pubmed chat", page_icon=":robot_face:", layout="wide")
 model_config = model_configs.VICUNA
@@ -31,13 +32,15 @@ def get_inference_engine() -> QueuedEngine:
 def get_vector_store(dataset_path: str, index_path: Optional[str] = None) -> DatasetVectorStore:
     # VectorStore for semantic search. Shared by all sessions
     dataset = load_data(dataset_path)
-    return DatasetVectorStore(dataset, QAEmbeddings(), index_path=index_path)
+    return DatasetVectorStore(dataset, QAEmbeddings(QA_CONTEXT_MODEL), index_path=index_path)
 
 
 def get_qa_session(engine: QueuedEngine, vector_store: VectorStore) -> QASession:
     # Conversation/contexts for each session
     if "qa_session" not in st.session_state:
-        qa_session = QASession(engine, vector_store, model_config.new_conversation())
+        qa_session = QASession.from_model_config(
+            model_config, engine, vector_store, debug=True
+        )
         st.session_state["qa_session"] = qa_session
         return qa_session
     return st.session_state["qa_session"]

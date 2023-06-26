@@ -146,8 +146,13 @@ class QASession:
         self.conv.append_message(self.conv.roles[1], None)
 
     def update_context(self, question: str, top_k: int = 3, **kwargs):
-        self.results = self.vector_store.similarity_search(question, top_k, **kwargs)
-        self.set_context([r.page_content for r in self.results])
+        self.results = self.vector_store.similarity_search(question, top_k)
+        self.set_context([r.page_content for r in self.results], **kwargs)
+
+    def set_context(self, contexts: List[str], **kwargs):
+        if "roles" in self.prompt.inputs:
+            kwargs.setdefault("roles", self.conv.roles)
+        self.conv.system = self.prompt.render(contexts, **kwargs)
 
     def conversation_stream(self, **kwargs) -> Iterable[str]:
         # TODO: Scrolling conv window while keeping context as long as possible
@@ -170,12 +175,6 @@ class QASession:
             print('**DEBUG**')
             print(input_text)
             print(output_text)
-
-    def set_context(self, contexts: List[str], **kwargs):
-        if "roles" in self.prompt.inputs:
-            kwargs["roles"] = self.conv.roles
-
-        self.conv.system = self.prompt.render(contexts, **kwargs)
 
     def get_history(self) -> str:
         messages = [f'{role}: {"" if message is None else message}' for role, message in self.conv.messages]

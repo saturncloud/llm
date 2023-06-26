@@ -15,9 +15,6 @@ import shutil
 
 from tqdm.contrib.concurrent import process_map
 
-context_model = "pritamdeka/S-PubMedBert-MS-MARCO"
-question_model = None
-
 
 @click.group(name="pubmed", short_help="Commands for downloading PubMed and formatting it into a dataset")
 def pubmed_cli():

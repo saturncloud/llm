@@ -65,6 +65,8 @@ clear_convo = st.button("clear conversation", on_click=qa_session.clear)
 with st.form(key="my_form", clear_on_submit=True):
     user_input = st.text_area("You:", key="input", height=100)
     question_submit_button = st.form_submit_button(label="Send")
+    if question_submit_button and not user_input:
+        question_submit_button = False
 
 if question_submit_button and not clear_convo:
     qa_session.append_question(user_input)

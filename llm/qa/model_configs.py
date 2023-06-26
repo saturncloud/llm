@@ -84,19 +84,30 @@ class ChatModelConfig(ModelConfig):
         return Conversation(**kwargs)
 
 
-PUBMED_BERT = ModelConfig("pritamdeka/S-PubMedBert-MS-MARCO")
-
 VICUNA = ChatModelConfig(
-    "/home/jovyan/workspace/models/vicuna-7b",
+    "lmsys/vicuna-7b-v1.3",
     tokenizer_kwargs={
         # Llama fast tokenizer is not good
         "use_fast": False
     },
+    default_prompt=prompts.FEW_SHOT,
 )
 
-REDPAJAMA = ChatModelConfig(
+REDPAJAMA_INSTRUCT = ChatModelConfig(
     "togethercomputer/RedPajama-INCITE-7B-Instruct",
     default_prompt=prompts.FEW_SHOT,
+    conversation_kwargs={
+        "roles": ("<human>", "<bot>"),
+        "stop_str": "<human>:",
+    },
+)
+
+REDPAJAMA_CHAT = ChatModelConfig(
+    "togethercomputer/RedPajama-INCITE-7B-Chat",
+    conversation_kwargs={
+        "roles": ("<human>", "<bot>"),
+        "stop_str": "<human>:",
+    }
 )
 
 MPT_INSTRUCT = ChatModelConfig(

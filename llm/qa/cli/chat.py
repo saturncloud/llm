@@ -3,7 +3,7 @@ from typing import Optional
 import click
 
 from llm.qa import model_configs
-from llm.qa.embedding import QAEmbeddings
+from llm.qa.embedding import QAEmbeddings, DEFAULT_MODEL
 from llm.qa.fastchatter import FastchatEngine, QASession
 from llm.qa.vector_store import DatasetVectorStore
 from llm.utils.dataset import load_data
@@ -13,7 +13,8 @@ from llm.utils.dataset import load_data
 @click.argument("input-path", required=True, envvar="QA_DATASET_PATH")
 @click.option("--input-type", help="Input file type. Defaults to file extension.", default=None, envvar="QA_INPUT_TYPE")
 @click.option("--index-path", help="Path to a pre-built FAISS index over the dataset", default=None, envvar="QA_INDEX_PATH")
-def chat_cli(input_path: str, input_type: Optional[str], index_path: Optional[str]):
+@click.option("--context-model", help="Model name or path for context embedding", default=DEFAULT_MODEL, envvar="QA_CONTEXT_MODEL")
+def chat_cli(input_path: str, input_type: Optional[str], index_path: Optional[str], context_model: str):
     dataset = load_data(input_path, input_type)
     if index_path is None:
         _index_path = input_path.rsplit(".", 1)[-1] + ".faiss"
@@ -23,7 +24,7 @@ def chat_cli(input_path: str, input_type: Optional[str], index_path: Optional[st
     model_config = model_configs.VICUNA
     model, tokenizer = model_config.load()
     engine = FastchatEngine(model, tokenizer, model_config.max_length)
-    vector_store = DatasetVectorStore(dataset, QAEmbeddings(), index_path=index_path)
+    vector_store = DatasetVectorStore(dataset, QAEmbeddings(context_model), index_path=index_path)
     qa_session = QASession.from_model_config(model_config, engine, vector_store)
 
     while True:

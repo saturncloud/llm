@@ -13,6 +13,10 @@ from llm.qa.parser import DEFAULT_INDEX_NAME, DataFields, DatasetParser
 
 
 class DatasetVectorStore(VectorStore):
+    """
+    Implements langchain's VectorStore interface on a huggingface dataset
+    with FAISS for semantic search.
+    """
     def __init__(
         self,
         dataset: Dataset,

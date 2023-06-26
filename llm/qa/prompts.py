@@ -8,6 +8,9 @@ from textwrap import dedent
 
 @dataclass
 class Prompt:
+    """
+    Formatting for basic LLM prompting
+    """
     template: str = ""
     inputs: List[str] = field(default_factory=list)
     default_kwargs: Dict[str, Any] = field(default_factory=dict)
@@ -27,6 +30,10 @@ class Prompt:
 
 @dataclass
 class ContextPrompt(Prompt):
+    """
+    Formatting for prompts that include additional contexts, such as the results
+    of a semantic search.
+    """
     default_context_label: str = "Context"
 
     def render(self, contexts: Optional[List[str]] = None, context_label: Optional[str] = None, **kwargs) -> str:
@@ -75,6 +82,7 @@ FEW_SHOT = ContextPrompt(
     },
 )
 
+# Dolly style wrapper for other prompts
 INSTRUCTION = Prompt(
     template="""
     Below is an instruction that describes a task. Write a response that appropriately completes the request.

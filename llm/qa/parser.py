@@ -25,7 +25,7 @@ class DataFields(StrEnum):
     TEXT = "text"
     EMBEDDING = "embedding"
 
-    # Split documents
+    # Extra fields for split documents
     DOC_ID = "doc_id"
     DOC_OFFSET = "doc_offset"
 
@@ -35,12 +35,12 @@ class DatasetParser:
     Parse, split, and embed datasets to get them ready for semantic search.
 
     Pass multiple embedding devices to support multiprocessed embeddings.
-    Each should be running on a different GPU device.
+    Each should be running on a different device (e.g. GPU1, GPU2,...)
     """
     def __init__(self, *embedding_devices: Embeddings) -> None:
         self.embedding_devices = embedding_devices
 
-    def embedding(self, index: Optional[int] = None):
+    def embedding(self, index: Optional[int] = None) -> Embeddings:
         index = index or 0
         if len(self.embedding_devices) <= index:
             raise ValueError(f"No embedding device at index {index}")
@@ -167,7 +167,7 @@ class DatasetParser:
         batch_size: int = 100,
     ) -> Dataset:
         """
-        Compute embeddings for the text field and add to the dataset
+        Compute semantic embeddings for the text field and add to the dataset
         """
         def _embed_batch(batch: Dict[str, List], rank: Optional[int]) -> Dict:
             texts = batch[DataFields.TEXT]
@@ -190,6 +190,9 @@ class DatasetParser:
         index_path: Optional[str] = None,
         **kwargs,
     ) -> Dataset:
+        """
+        Add FAISS index on embeddings column for basic semantic searchs
+        """
         dataset = dataset.add_faiss_index(str(DataFields.EMBEDDING), index_name)
         if index_path:
             dataset.save_faiss_index(index_name, index_path, **kwargs)

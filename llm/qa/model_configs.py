@@ -38,10 +38,16 @@ def merge_dict(a: Dict, b: Dict) -> Dict:
 
 @dataclass
 class ModelConfig:
+    """
+    Stores model and tokenizer configuration for
+    pretrained huggingface models.
+    """
     name: str
     max_length: int = 512
     model_kwargs: Dict[str, Any] = field(default_factory=dict)
     tokenizer_kwargs: Dict[str, Any] = field(default_factory=dict)
+    model_cls: Optional[Type[PreTrainedModel]] = None
+    tokenizer_cls: Optional[Type[PreTrainedTokenizerBase]] = None
 
     merge_defaults: bool = True
 
@@ -50,20 +56,20 @@ class ModelConfig:
             self.model_kwargs = merge_dict(self.model_kwargs, default_model_kwargs)
             self.tokenizer_kwargs = merge_dict(self.tokenizer_kwargs, default_tokenizer_kwargs)
 
-    def load(
-        self,
-        model_cls: Optional[Type[PreTrainedModel]] = None,
-        tokenizer_cls: Optional[Type[PreTrainedTokenizerBase]] = None,
-    ) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
-        m_cls = model_cls or AutoModelForCausalLM
-        t_cls = tokenizer_cls or AutoTokenizer
-        model = m_cls.from_pretrained(self.name, **self.model_kwargs)
-        tokenizer = t_cls.from_pretrained(self.name, **self.tokenizer_kwargs)
+    def load(self) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
+        model_cls = self.model_cls or AutoModelForCausalLM
+        tokenizer_cls = self.tokenizer_cls or AutoTokenizer
+        model = model_cls.from_pretrained(self.name, **self.model_kwargs)
+        tokenizer = tokenizer_cls.from_pretrained(self.name, **self.tokenizer_kwargs)
         return model, tokenizer
 
 
 @dataclass
 class ChatModelConfig(ModelConfig):
+    """
+    Stores model, tokenizer, and conversation configuration for
+    pretrained huggingface models.
+    """
     max_length: int = 2048
     conversation_kwargs: Dict[str, Any] = field(default_factory=dict)
     default_prompt: prompts.ContextPrompt = prompts.ZERO_SHOT

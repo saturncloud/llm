@@ -29,8 +29,7 @@ def chat_cli(input_path: str, input_type: Optional[str], index_path: Optional[st
 
     while True:
         input_text = input("Question: ")
-        qa_session.update_context(input_text)
-        qa_session.append_question(input_text)
+        qa_session.append_question(input_text, update_context=True)
         prev_output = ""
         for output_text in qa_session.conversation_stream():
             new_output = output_text[len(prev_output):]

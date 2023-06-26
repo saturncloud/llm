@@ -25,7 +25,8 @@ class InferenceEngine(ABC):
 
 class FastchatEngine(InferenceEngine):
     """
-    InferenceEngine using FastChat utilities
+    Wrapper on FastChat's generate_stream that implements
+    the InferenceEngine interface
     """
     def __init__(
         self,
@@ -62,7 +63,7 @@ class FastchatEngine(InferenceEngine):
 
 class QueuedEngine(InferenceEngine):
     """
-    Run engines in background threads with queued requests/responses
+    Run inference engines in background threads with queued requests/responses
 
     Enables thread-safe handling of concurrent requests to one or more engines
     """
@@ -105,15 +106,21 @@ class QueuedEngine(InferenceEngine):
 
 class StreamRequest:
     """
-    A generate_stream request to be enqueued
+    An inference request to be enqueued
     """
     def __init__(self, prompt: str, **kwargs) -> None:
         self.prompt = prompt
         self.kwargs = kwargs
+        # When retrieved value is None, stream is completed
         self.output: Queue[Optional[str]] = Queue()
 
 
 class QASession:
+    """
+    Manages session state for a question-answering conversation between a user and an AI.
+    Contexts relevant to questions are retrieved from the given vector store and appended
+    to the system prompt that is fed into inference.
+    """
     def __init__(
         self,
         engine: InferenceEngine,
@@ -141,9 +148,11 @@ class QASession:
         conv = model_config.new_conversation()
         return cls(engine, vector_store, conv, prompt or model_config.default_prompt, **kwargs)
 
-    def append_question(self, question: str):
+    def append_question(self, question: str, update_context: bool = False, **kwargs):
         self.conv.append_message(self.conv.roles[0], question)
         self.conv.append_message(self.conv.roles[1], None)
+        if update_context:
+            self.update_context(question, **kwargs)
 
     def update_context(self, question: str, top_k: int = 3, **kwargs):
         self.results = self.vector_store.similarity_search(question, top_k)
@@ -155,7 +164,6 @@ class QASession:
         self.conv.system = self.prompt.render(contexts, **kwargs)
 
     def conversation_stream(self, **kwargs) -> Iterable[str]:
-        # TODO: Scrolling conv window while keeping context as long as possible
         input_text = self.conv.get_prompt()
         params = {
             "temperature": 0.7,

@@ -32,7 +32,8 @@ def get_inference_engine() -> QueuedEngine:
 def get_vector_store(dataset_path: str, index_path: Optional[str] = None) -> DatasetVectorStore:
     # VectorStore for semantic search. Shared by all sessions
     dataset = load_data(dataset_path)
-    return DatasetVectorStore(dataset, QAEmbeddings(QA_CONTEXT_MODEL), index_path=index_path)
+    embedding = QAEmbeddings(QA_CONTEXT_MODEL)
+    return DatasetVectorStore(dataset, embedding, index_path=index_path)
 
 
 def get_qa_session(engine: QueuedEngine, vector_store: VectorStore) -> QASession:
@@ -47,6 +48,7 @@ def get_qa_session(engine: QueuedEngine, vector_store: VectorStore) -> QASession
 
 
 def apply_filter():
+    # Filter which contexts are seen by the LLM, and re-ask the last question
     contexts = []
     for doc, to_include in zip(qa_session.results, included):
         if to_include:
@@ -65,19 +67,21 @@ included: List[bool] = []
 
 clear_convo = st.button("clear conversation", on_click=qa_session.clear)
 
-with st.form(key="my_form", clear_on_submit=True):
+with st.form(key="input_form", clear_on_submit=True):
     user_input = st.text_area("You:", key="input", height=100)
     question_submit_button = st.form_submit_button(label="Send")
     if question_submit_button and not user_input:
         question_submit_button = False
 
 if question_submit_button and not clear_convo:
+    # Write question out to streamlit, then search for contexts
     qa_session.append_question(user_input)
     output.write(qa_session.get_history())
     with st.spinner("Searching..."):
         qa_session.update_context(user_input)
 
 if qa_session.results:
+    # Write contexts out to streamlit, with checkboxes to filter what is sent to the LLM
     with st.form(key="checklists"):
         included = []
         for idx, doc in enumerate(qa_session.results):
@@ -94,6 +98,7 @@ else:
     checklist_submit_button = False
 
 if (question_submit_button or checklist_submit_button) and not clear_convo:
+    # Stream response from LLM, updating chat window at each step
     message_string = qa_session.get_history()
     for text in qa_session.conversation_stream():
         message = message_string + text

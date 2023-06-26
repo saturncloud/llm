@@ -20,6 +20,17 @@ PUBMED_MODEL = "pritamdeka/S-PubMedBert-MS-MARCO"
 
 
 class QAEmbeddings(Embeddings):
+    """
+    Implements the langchain Embeddings interface with pretrained
+    huggingface transformer models.
+
+    For models with only a single set of weights (most of them)
+    set only the context model/tokenizer. Questions will be embedded
+    using the same model.
+
+    Models that use separate weights to embed contexts and questions,
+    (e.g. DPR models) may pass a separate question model/tokenizer.
+    """
     context_model: PreTrainedModel
     context_tokenizer: PreTrainedTokenizerBase
     question_model: PreTrainedModel
@@ -62,6 +73,9 @@ class QAEmbeddings(Embeddings):
         *devices: Union[str, int],
         set_start_method: Optional[bool] = None,
     ) -> List[QAEmbeddings]:
+        """
+        Copy model onto multiple devices for multiprocessed embeddings
+        """
         embeddings = []
         if "auto" in devices:
             # Select all available devices
@@ -113,7 +127,9 @@ class QAEmbeddings(Embeddings):
 
     def sentence_pooling(self, outputs) -> torch.Tensor:
         if hasattr(outputs, "pooler_output"):
+            # Some DPR models have their own pooling
             return outputs.pooler_output
+        # Default to class pooling. Take the embedding of the CLS token to represent each batch
         return outputs.last_hidden_state[:, 0]
 
     def batch_token_length(self, texts: List[str], is_context: bool = True) -> List[int]:

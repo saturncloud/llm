@@ -7,7 +7,7 @@ from uuid import uuid4
 from datasets import Dataset
 from langchain.embeddings.base import Embeddings
 
-from llm.qa.embedding import TextSplitter, QAEmbeddings
+from llm.qa.embedding import TextSplitter
 from llm.utils.enum import StrEnum
 
 logger = logging.getLogger(__name__)

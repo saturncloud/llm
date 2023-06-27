@@ -188,8 +188,9 @@ class QASession:
         messages = [f'{role}: {"" if message is None else message}' for role, message in self.conv.messages]
         return "\n\n".join(messages)
 
-    def clear(self, keep_results: bool = False):
+    def clear(self, keep_system: bool = False, keep_results: bool = False):
         self.conv.messages = []
-        self.conv.system = ""
+        if not keep_system:
+            self.conv.system = ""
         if not keep_results:
             self.results = []

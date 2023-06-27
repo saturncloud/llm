@@ -63,7 +63,11 @@ qa_session = get_qa_session(engine, vector_store)
 output = st.text("")
 included: List[bool] = []
 
-clear_convo = st.button("clear conversation", on_click=qa_session.clear)
+clear_convo = st.button("clear conversation")
+if clear_convo:
+    # Clear conversation, but keep system prompt in case the
+    # user wants to re-query over the previous context.
+    qa_session.clear(keep_system=True, keep_results=True)
 
 with st.form(key="input_form", clear_on_submit=True):
     # Collect user input

@@ -99,6 +99,15 @@ VICUNA = ChatModelConfig(
     default_prompt=prompts.FEW_SHOT,
 )
 
+VICUNA_33B = ChatModelConfig(
+    "lmsys/vicuna-33b-v1.3",
+    tokenizer_kwargs={
+        # Llama fast tokenizer is not good
+        "use_fast": False
+    },
+    default_prompt=prompts.FEW_SHOT,
+)
+
 REDPAJAMA_INSTRUCT = ChatModelConfig(
     "togethercomputer/RedPajama-INCITE-7B-Instruct",
     default_prompt=prompts.FEW_SHOT,

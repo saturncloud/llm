@@ -6,7 +6,8 @@ from langchain.vectorstores.base import VectorStore
 
 from llm.qa import model_configs
 from llm.qa.embedding import QAEmbeddings, PUBMED_MODEL
-from llm.qa.fastchatter import QASession, QueuedEngine, FastchatEngine
+from llm.qa.inference import QueuedEngine, FastchatEngine
+from llm.qa.session import QASession
 from llm.qa.parser import DataFields
 from llm.qa.vector_store import DatasetVectorStore
 from llm.utils.dataset import load_data
@@ -40,7 +41,7 @@ def get_qa_session(engine: QueuedEngine, vector_store: VectorStore) -> QASession
     # Conversation/contexts for each session
     if "qa_session" not in st.session_state:
         qa_session = QASession.from_model_config(
-            model_config, engine, vector_store, debug=True
+            model_config, vector_store, engine=engine, debug=True
         )
         st.session_state["qa_session"] = qa_session
         return qa_session

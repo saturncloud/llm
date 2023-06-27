@@ -3,8 +3,9 @@ from typing import Optional
 import click
 
 from llm.qa import model_configs
-from llm.qa.embedding import QAEmbeddings, DEFAULT_MODEL
-from llm.qa.fastchatter import FastchatEngine, QASession
+from llm.qa.embedding import QAEmbeddings
+from llm.qa.inference import FastchatEngine
+from llm.qa.session import QASession
 from llm.qa.vector_store import DatasetVectorStore
 from llm.utils.dataset import load_data
 
@@ -22,10 +23,8 @@ def chat_cli(input_path: str, input_type: Optional[str], index_path: Optional[st
             index_path = _index_path
 
     model_config = model_configs.VICUNA
-    model, tokenizer = model_config.load()
-    engine = FastchatEngine(model, tokenizer, model_config.max_length)
     vector_store = DatasetVectorStore(dataset, QAEmbeddings(context_model), index_path=index_path)
-    qa_session = QASession.from_model_config(model_config, engine, vector_store)
+    qa_session = QASession.from_model_config(model_config, vector_store)
 
     while True:
         input_text = input("Question: ")

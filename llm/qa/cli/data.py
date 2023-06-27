@@ -3,10 +3,11 @@ from typing import List, Optional
 from urllib.parse import urlparse
 
 import click
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from transformers import AutoTokenizer
 
 from llm.qa.crawler import DocSpider
-from llm.qa.embedding import DEFAULT_MODEL, QAEmbeddings, RecursiveCharacterTextSplitter
+from llm.qa.embedding import DEFAULT_MODEL, QAEmbeddings
 from llm.qa.parser import DatasetParser, DataFields
 from llm.utils.cli import click_coroutine
 from llm.utils.dataset import load_data, save_data

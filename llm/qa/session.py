@@ -23,11 +23,13 @@ class QASession:
         vector_store: VectorStore,
         conv: Conversation,
         prompt: ContextPrompt = ZERO_SHOT,
+        conv_history: int = 3,
         debug: bool = False,
     ):
         self.engine = engine
         self.vector_store = vector_store
         self.conv = conv
+        self.conv_history = conv_history
         self.prompt = prompt
         self.debug = debug
         self.results: List[Document] = []
@@ -48,6 +50,11 @@ class QASession:
         return cls(engine, vector_store, conv, prompt or model_config.default_prompt, **kwargs)
 
     def append_question(self, question: str, update_context: bool = False, **kwargs):
+        if self.conv_history >= 0:
+            keep_messages = self.conv_history * len(self.conv.roles)
+            num_messages = len(self.conv.messages)
+            if num_messages > keep_messages:
+                self.conv.messages = self.conv.messages[num_messages - keep_messages:]
         self.conv.append_message(self.conv.roles[0], question)
         self.conv.append_message(self.conv.roles[1], None)
         if update_context:
@@ -77,7 +84,7 @@ class QASession:
         for output_text in self.engine.generate_stream(input_text, **params):
             yield output_text
 
-        self.conv.messages[-1][-1] = output_text.strip()
+        self.conv.update_last_message(output_text.strip())
         if self.debug:
             print('**DEBUG**')
             print(input_text)

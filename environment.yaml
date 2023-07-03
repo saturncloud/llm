@@ -6,22 +6,28 @@ channels:
     - nodefaults
     - conda-forge
 dependencies:
-    - cudatoolkit=11.3
-    - cudatoolkit-dev=11.3
+    - cudatoolkit=11.7
+    - cudatoolkit-dev=11.7
     - ipykernel=6.13.0
     - ipywidgets<9,>=8
-    - pytorch=1.12.0
+    - pytorch>=1.13.0,<1.14.0
+    - faiss-gpu
     - pip
     - python=3.9
     - pip:
-      - transformers
       - streamlit
       - beautifulsoup4
-      - torch<1.13,>=1.12.0
-      - numpy<1.23,>=1.18
+      - scrapy
+      - transformers
+      - datasets
+      - einops
+      - sentencepiece
+      - sentence_transformers
+      - langchain
+      - fschat
+      - bitsandbytes
+      - numpy<1.25,>=1.24
+      - accelerate
+      - xformers
+      - mkl==2021.4.0
       - gptq
-
-
-# TODO: Figure out the deal with the mkl lib
-# Had to symlink all libmkl_*.so to libmkl_*.so.1
-# .2 symlinks existed, but failed on fetching the .1s

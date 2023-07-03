@@ -131,7 +131,7 @@ MPT_INSTRUCT = ChatModelConfig(
         "init_device": "cuda:0",
         # MPT not yet full supported by Transformers
         "trust_remote_code": True,
-        "revision": "e7119f37956c1a3865da33e25ef5ce9159ff2c16",
+        "revision": "1fc4634127ec64a45716003578b9cfae23265849",
     },
     default_prompt=prompts.INSTRUCTION_FEW_SHOT,
 )
@@ -142,7 +142,7 @@ MPT_CHAT = ChatModelConfig(
         "init_device": "cuda:0",
         # MPT not yet full supported by Transformers
         "trust_remote_code": True,
-        "revision": "c8d4750ac8421303665d6ecc253950c69b56d324",
+        "revision": "c53dee01e05098f81cac11145f9bf45feedc5b2f",
     },
     default_prompt=prompts.ZERO_SHOT,
 )

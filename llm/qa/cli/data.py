@@ -159,15 +159,10 @@ def pipeline(input_path: str, output_path: str, input_type: Optional[str], batch
 @click.argument("input-path", required=True)
 @click.option("-o", "--output-path", required=True, help="Output path for the FAISS index")
 @click.option("--input-type", help="Input file type. Defaults to file extension.")
-@click.option("--index-name", help="Name of the index to add the dataset to", default=None)
-def index(input_path: str, output_path: str, input_type: Optional[str], index_name: Optional[str]):
+def index(input_path: str, output_path: str, input_type: Optional[str]):
     dataset = load_data(input_path, input_type)
     parser = DatasetParser()
-    kwargs = {}
-    if index_name:
-        kwargs["index_name"] = index_name
-    parser.index(dataset, index_path=output_path, **kwargs)
-
+    parser.index(dataset, index_path=output_path)
 
 
 if __name__ == "__main__":

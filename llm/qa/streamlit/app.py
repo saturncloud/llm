@@ -17,7 +17,9 @@ QA_INDEX_PATH = os.getenv("QA_INDEX_PATH")
 QA_CONTEXT_MODEL = os.getenv("QA_CONTEXT_MODEL", DEFAULT_MODEL)
 model_config = model_configs.VICUNA
 
-st.set_page_config(page_title="pubmed chat", page_icon=":robot_face:", layout="wide")
+MARKDOWN_LINEBREAK = "  \n"
+
+st.set_page_config(page_title="QA Chat", page_icon=":robot_face:", layout="wide")
 
 
 @st.cache_resource
@@ -73,24 +75,40 @@ if clear_convo:
 with st.form(key="input_form", clear_on_submit=True):
     # Collect user input
     user_input = st.text_area("You:", key="input", height=100)
+    placeholder = st.container()
     query_submitted = st.form_submit_button(label="Query")
-    if query_submitted or qa_session.results:
-        query_existing_submitted = st.form_submit_button(label="Query Existing")
-    else:
-        query_existing_submitted = False
 
-    if query_existing_submitted:
-        query_submitted = True
+    rephrase_question = placeholder.checkbox(
+        "Rephrase question with history",
+        key="rephrase_question",
+        value=True,
+        disabled=not (query_submitted or qa_session.conv.messages),
+    )
+    search_new_context = placeholder.checkbox(
+        "Search new context",
+        key="search_new_context",
+        value=True,
+        disabled=not (query_submitted or qa_session.results),
+    )
+
     if query_submitted and not user_input:
         query_submitted = False
 
+question = ""
 if query_submitted and not clear_convo:
-    # Write question out to streamlit, then search for contexts
-    qa_session.append_question(user_input)
-    output.write(qa_session.get_history())
-    if not query_existing_submitted:
-        with st.spinner("Searching..."):
-            qa_session.update_context(user_input)
+    # Write user input out to streamlit, then search for contexts
+    output.write(qa_session.get_history(separator=MARKDOWN_LINEBREAK, next_question=user_input))
+
+    with st.spinner("Searching..."):
+        if rephrase_question:
+            question = qa_session.rephrase_question(user_input)
+        else:
+            question = user_input
+        if search_new_context:
+            qa_session.search_context(question)
+
+        # Append question last so question rephrasing only looks at previous messages
+        qa_session.append_question(user_input)
 
 if qa_session.results:
     # Write contexts out to streamlit, with checkboxes to filter what is sent to the LLM
@@ -109,12 +127,11 @@ if qa_session.results:
 if not clear_convo:
     if query_submitted:
         # Stream response from LLM, updating chat window at each step
-        message_string = qa_session.get_history()
-        for text in qa_session.conversation_stream():
+        message_string = qa_session.get_history(separator=MARKDOWN_LINEBREAK)
+        for text in qa_session.stream_answer(question):
             message = message_string + text
-            message = message.replace("\n", "\n\n")
             output.write(message)
     else:
         # Write existing message history
-        message = qa_session.get_history().replace("\n", "\n\n")
+        message = qa_session.get_history(separator=MARKDOWN_LINEBREAK)
         output.write(message)

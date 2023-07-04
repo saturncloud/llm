@@ -17,6 +17,12 @@ class InferenceEngine(ABC):
         """
         raise NotImplementedError()
 
+    def get_answer(self, prompt: str, **kwargs) -> str:
+        answer = ""
+        for _answer in self.generate_stream(prompt, **kwargs):
+            answer = _answer
+        return answer
+
 
 class FastchatEngine(InferenceEngine):
     """
@@ -38,15 +44,20 @@ class FastchatEngine(InferenceEngine):
         prompt: str,
         **kwargs,
     ) -> Iterable[str]:
-        gen_params = {
+        params = {
             "prompt": prompt,
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "repetition_penalty": 1.0,
+            "max_new_tokens": 512,
+            "echo": False,
             **kwargs,
         }
 
         output_stream = generate_stream(
             self.model,
             self.tokenizer,
-            gen_params,
+            params,
             self.model.device,
             context_len=self.max_length,
         )

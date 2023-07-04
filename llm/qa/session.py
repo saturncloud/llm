@@ -8,7 +8,7 @@ from langchain.vectorstores.base import VectorStore
 
 from llm.qa.inference import FastchatEngine, InferenceEngine
 from llm.qa.model_configs import ChatModelConfig
-from llm.qa.prompts import ZERO_SHOT, ContextPrompt
+from llm.qa.prompts import STANDALONE_QUESTION, ZERO_SHOT, ContextPrompt
 
 
 class QASession:
@@ -23,7 +23,7 @@ class QASession:
         vector_store: VectorStore,
         conv: Conversation,
         prompt: ContextPrompt = ZERO_SHOT,
-        conv_history: int = 3,
+        conv_history: int = 5,
         debug: bool = False,
     ):
         self.engine = engine
@@ -33,6 +33,7 @@ class QASession:
         self.prompt = prompt
         self.debug = debug
         self.results: List[Document] = []
+        self.contexts: List[str] = []
 
     @classmethod
     def from_model_config(
@@ -49,34 +50,17 @@ class QASession:
         conv = model_config.new_conversation()
         return cls(engine, vector_store, conv, prompt or model_config.default_prompt, **kwargs)
 
-    def append_question(self, question: str, update_context: bool = False, **kwargs):
-        if self.conv_history >= 0:
-            keep_messages = self.conv_history * len(self.conv.roles)
-            num_messages = len(self.conv.messages)
-            if num_messages > keep_messages:
-                self.conv.messages = self.conv.messages[num_messages - keep_messages:]
-        self.conv.append_message(self.conv.roles[0], question)
-        self.conv.append_message(self.conv.roles[1], None)
+    def stream_answer(self, question: str, update_context: bool = False, **kwargs):
+        last_message = self.conv.messages[-1] if self.conv.messages else [None, None]
+        if last_message[0] == self.conv.roles[1] and last_message[0] is not None:
+            # Question has not been appended to conversation
+            self.append_question(question)
+
         if update_context:
-            self.update_context(question, **kwargs)
+            self.search_context(question)
+        input_text = self.prompt.render(question=question, contexts=self.contexts)
 
-    def update_context(self, question: str, top_k: int = 3, **kwargs):
-        self.results = self.vector_store.similarity_search(question, top_k)
-        self.set_context([r.page_content for r in self.results], **kwargs)
-
-    def set_context(self, contexts: List[str], **kwargs):
-        if "roles" in self.prompt.inputs:
-            kwargs.setdefault("roles", self.conv.roles)
-        self.conv.system = self.prompt.render(contexts, **kwargs)
-
-    def conversation_stream(self, **kwargs) -> Iterable[str]:
-        input_text = self.conv.get_prompt()
         params = {
-            "temperature": 0.7,
-            "top_p": 0.9,
-            "repetition_penalty": 1.0,
-            "max_new_tokens": 512,
-            "echo": False,
             "stop": self.conv.stop_str,
             "stop_token_ids": self.conv.stop_token_ids,
             **kwargs,
@@ -86,13 +70,48 @@ class QASession:
 
         self.conv.update_last_message(output_text.strip())
         if self.debug:
-            print('**DEBUG**')
-            print(input_text)
-            print(output_text)
+            print(f"\n** Context Input **\n{input_text}")
+            print(f"\n** Context Answer **\n{output_text}")
 
-    def get_history(self) -> str:
+    def rephrase_question(self, question: str, **kwargs):
+        if len(self.conv.messages) == 0:
+            return question
+        input_text = STANDALONE_QUESTION.render(conversation=self.get_history(), question=question)
+        params = {
+            "stop": self.conv.stop_str,
+            "stop_token_ids": self.conv.stop_token_ids,
+            **kwargs,
+        }
+        standalone = self.engine.get_answer(input_text, **params)
+        if self.debug:
+            print(f"\n** Standalone Input **\n{input_text}")
+            print(f"\n** Standalone Question **\n{standalone}")
+        return standalone
+
+    def append_question(self, question: str):
+        if self.conv_history >= 0:
+            keep_messages = self.conv_history * len(self.conv.roles)
+            num_messages = len(self.conv.messages)
+            if num_messages > keep_messages:
+                self.conv.messages = self.conv.messages[num_messages - keep_messages:]
+        self.conv.append_message(self.conv.roles[0], question)
+        self.conv.append_message(self.conv.roles[1], None)
+
+    def search_context(self, question: str, top_k: int = 3, **kwargs) -> List[Document]:
+        self.results = self.vector_store.similarity_search(question, top_k)
+        self.set_context([r.page_content for r in self.results], **kwargs)
+        return self.results
+
+    def set_context(self, contexts: List[str], **kwargs):
+        if "roles" in self.prompt.inputs:
+            kwargs.setdefault("roles", self.conv.roles)
+        self.contexts = contexts
+
+    def get_history(self, separator: str = "\n", next_question: Optional[str] = None) -> str:
         messages = [f'{role}: {"" if message is None else message}' for role, message in self.conv.messages]
-        return "\n\n".join(messages)
+        if next_question:
+            messages.append(f"{self.conv.roles[0]}: {next_question}")
+        return separator.join(messages)
 
     def clear(self, keep_system: bool = False, keep_results: bool = False):
         self.conv.messages = []

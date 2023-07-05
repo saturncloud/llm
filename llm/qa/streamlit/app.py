@@ -57,7 +57,7 @@ def filter_contexts():
         if to_include:
             contexts.append(doc.page_content)
 
-    qa_session.set_context(contexts)
+    qa_session.set_contexts(contexts)
 
 
 engine = get_inference_engine()
@@ -70,7 +70,7 @@ clear_convo = st.button("clear conversation")
 if clear_convo:
     # Clear conversation, but keep system prompt in case the
     # user wants to re-query over the previous context.
-    qa_session.clear(keep_system=True, keep_results=True)
+    qa_session.clear(keep_results=True)
 
 with st.form(key="input_form", clear_on_submit=True):
     # Collect user input

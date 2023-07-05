@@ -55,6 +55,7 @@ class ContextPrompt(Prompt):
             prompt += f"\n{context}"
         return prompt
 
+# Answer question with context. No examples.
 ZERO_SHOT = ContextPrompt(
     template="""
     Given the following contexts and a question, create a final answer. Only use the given context to arrive at your answer. If you don't know the answer, just say that you don't know. Don't try to make up an answer.
@@ -69,6 +70,7 @@ ZERO_SHOT = ContextPrompt(
     },
 )
 
+# Answer question with context. Examples given to guide expected format, e.g. LLM should generate new user prompt at end of response to use as a stop string.
 FEW_SHOT = ContextPrompt(
     template="""
     Given the following contexts and a question, create a final answer. Only use the given context to arrive at your answer. If you don't know the answer, just say that you don't know. Don't try to make up an answer.
@@ -98,6 +100,7 @@ FEW_SHOT = ContextPrompt(
     },
 )
 
+# Rephrase question with additional context from previous messages. Examples given.
 STANDALONE_QUESTION = Prompt(
     template="""
     Given the following conversation and a follow up question, rephrase the follow up question with any relevant context.

@@ -50,7 +50,10 @@ class QASession:
         conv = model_config.new_conversation()
         return cls(engine, vector_store, conv, prompt or model_config.default_prompt, **kwargs)
 
-    def stream_answer(self, question: str, update_context: bool = False, **kwargs):
+    def stream_answer(self, question: str, update_context: bool = False, **kwargs) -> Iterable[str]:
+        """
+        Stream response to the given question using the session's prompt and contexts.
+        """
         last_message = self.conv.messages[-1] if self.conv.messages else [None, None]
         if last_message[0] == self.conv.roles[1] and last_message[0] is not None:
             # Question has not been appended to conversation
@@ -74,6 +77,12 @@ class QASession:
             print(f"\n** Context Answer **\n{output_text}")
 
     def rephrase_question(self, question: str, **kwargs):
+        """
+        Rephrase question to be a standalone question based on conversation history.
+
+        Enables users to implicitly refer to previous messages. Relevant information is
+        added to the question, which then gets used both for semantic search the final answer.
+        """
         if len(self.conv.messages) == 0:
             return question
         input_text = STANDALONE_QUESTION.render(conversation=self.get_history(), question=question)
@@ -89,6 +98,9 @@ class QASession:
         return standalone
 
     def append_question(self, question: str):
+        """
+        Append question and empty answer prompt. Trim messages if needed.
+        """
         if self.conv_history >= 0:
             keep_messages = self.conv_history * len(self.conv.roles)
             num_messages = len(self.conv.messages)
@@ -98,24 +110,31 @@ class QASession:
         self.conv.append_message(self.conv.roles[1], None)
 
     def search_context(self, question: str, top_k: int = 3, **kwargs) -> List[Document]:
-        self.results = self.vector_store.similarity_search(question, top_k)
-        self.set_context([r.page_content for r in self.results], **kwargs)
+        """
+        Update contexts from vector store
+        """
+        self.results = self.vector_store.similarity_search(question, top_k, **kwargs)
+        self.set_contexts([r.page_content for r in self.results])
         return self.results
 
-    def set_context(self, contexts: List[str], **kwargs):
-        if "roles" in self.prompt.inputs:
-            kwargs.setdefault("roles", self.conv.roles)
+    def set_contexts(self, contexts: List[str]):
+        """
+        Set contexts explicitly (e.g. for filtering which results are included)
+        """
         self.contexts = contexts
 
     def get_history(self, separator: str = "\n", next_question: Optional[str] = None) -> str:
+        """
+        Get conversation history
+        """
         messages = [f'{role}: {"" if message is None else message}' for role, message in self.conv.messages]
         if next_question:
             messages.append(f"{self.conv.roles[0]}: {next_question}")
         return separator.join(messages)
 
-    def clear(self, keep_system: bool = False, keep_results: bool = False):
+    def clear(self, keep_results: bool = False):
         self.conv.messages = []
-        if not keep_system:
-            self.conv.system = ""
+        self.conv.system = ""
         if not keep_results:
             self.results = []
+            self.contexts = []

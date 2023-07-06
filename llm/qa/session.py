@@ -55,7 +55,7 @@ class QASession:
         Stream response to the given question using the session's prompt and contexts.
         """
         last_message = self.conv.messages[-1] if self.conv.messages else [None, None]
-        if last_message[0] == self.conv.roles[1] and last_message[0] is not None:
+        if last_message[0] == self.conv.roles[1] and last_message[1] is not None:
             # Question has not been appended to conversation
             self.append_question(question)
 

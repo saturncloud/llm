@@ -37,8 +37,8 @@ class ContextPrompt(Prompt):
     default_context_label: str = "Context"
 
     def render(self, contexts: Optional[List[str]] = None, context_label: Optional[str] = None, **kwargs) -> str:
-        context = "\n".join([f"{context_label}: {c.strip()}" for c in contexts or []])
         context_label = context_label or self.default_context_label
+        context = "\n".join([f"{context_label}: {c.strip()}" for c in contexts or []])
 
         if "context_label" in self.inputs:
             kwargs["context_label"] = context_label

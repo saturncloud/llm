@@ -15,6 +15,10 @@ from scrapy.crawler import CrawlerProcess
 
 
 class DocSpider(Spider):
+    """
+    Documentation web crawler
+    """
+
     name = "documentation"
     start_urls: List[str]
 

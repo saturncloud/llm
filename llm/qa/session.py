@@ -61,7 +61,10 @@ class QASession:
 
         if update_context:
             self.search_context(question)
-        input_text = self.prompt.render(question=question, contexts=self.contexts)
+        kwargs = {}
+        if "roles" in self.prompt.inputs:
+            kwargs["roles"] = self.conv.roles
+        input_text = self.prompt.render(question=question, contexts=self.contexts, **kwargs)
 
         params = {
             "stop": self.conv.stop_str,
@@ -85,7 +88,9 @@ class QASession:
         """
         if len(self.conv.messages) == 0:
             return question
-        input_text = STANDALONE_QUESTION.render(conversation=self.get_history(), question=question)
+        input_text = STANDALONE_QUESTION.render(
+            conversation=self.get_history(), roles=self.conv.roles, question=question
+        )
         params = {
             "stop": self.conv.stop_str,
             "stop_token_ids": self.conv.stop_token_ids,

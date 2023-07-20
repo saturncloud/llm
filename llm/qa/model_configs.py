@@ -48,6 +48,8 @@ class ModelConfig:
     tokenizer_kwargs: Dict[str, Any] = field(default_factory=dict)
     model_cls: Optional[Type[PreTrainedModel]] = None
     tokenizer_cls: Optional[Type[PreTrainedTokenizerBase]] = None
+    peft_adapter: Optional[str] = None
+    peft_kwargs: Dict[str, Any] = field(default_factory=dict)
 
     merge_defaults: bool = True
 
@@ -56,13 +58,20 @@ class ModelConfig:
             self.model_kwargs = merge_dict(self.model_kwargs, default_model_kwargs)
             self.tokenizer_kwargs = merge_dict(self.tokenizer_kwargs, default_tokenizer_kwargs)
 
-    def load(self, device: Optional[Union[int, str]] = None) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
+    def load(self, device_map: Optional[Union[str, Dict]] = None) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
         model_cls = self.model_cls or AutoModelForCausalLM
         tokenizer_cls = self.tokenizer_cls or AutoTokenizer
-        model_kwargs = {**self.model_kwargs}
-        if device is not None:
-            model_kwargs["device_map"] = {"": device}
+        if device_map is not None:
+            model_kwargs = {
+                **self.model_kwargs,
+                "device_map": device_map,
+            }
+        else:
+            model_kwargs = self.model_kwargs
         model = model_cls.from_pretrained(self.name, **model_kwargs)
+        if self.peft_adapter:
+            from peft import PeftModel
+            model = PeftModel.from_pretrained(model, self.peft_adapter, **self.peft_kwargs)
         tokenizer = tokenizer_cls.from_pretrained(self.name, **self.tokenizer_kwargs)
         return model, tokenizer
 
@@ -92,7 +101,7 @@ VICUNA = ChatModelConfig(
         # Llama fast tokenizer is not good
         "use_fast": False,
     },
-    default_prompt=prompts.FEW_SHOT,
+    default_prompt=prompts.ZERO_SHOT,
 )
 
 VICUNA_33B = ChatModelConfig(
@@ -102,6 +111,16 @@ VICUNA_33B = ChatModelConfig(
         "use_fast": False,
     },
     default_prompt=prompts.FEW_SHOT,
+)
+
+MEDCUNA_7B = ChatModelConfig(
+    "lmsys/vicuna-7b-v1.3",
+    tokenizer_kwargs={
+        # Llama fast tokenizer is not good
+        "use_fast": False
+    },
+    default_prompt=prompts.ZERO_SHOT,
+    peft_adapter="/home/jovyan/workspace/models/medcuna-7b",
 )
 
 REDPAJAMA_INSTRUCT = ChatModelConfig(

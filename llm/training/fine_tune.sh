@@ -7,7 +7,7 @@ DIR=$(dirname $0)
 deepspeed --num_gpus=4 $DIR/train.py \
     --ddp_timeout=360000 \
     --output_dir "$WORKSPACE/models/flacuna-7b" \
-    --deepspeed "llm/deepspeed_configs/bf16.json" \
+    --deepspeed "$DIR/deepspeed_configs/bf16.json" \
     --bf16 True \
     --lora_r 8 \
     --lora_alpha 16 \

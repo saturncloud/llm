@@ -30,4 +30,3 @@ dependencies:
       - xformers
       - mkl==2021.4.0
       - gptq
-      - trl

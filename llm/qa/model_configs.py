@@ -95,17 +95,8 @@ class ChatModelConfig(ModelConfig):
         return ConversationBufferWindowMemory(**self.conversation_kwargs)
 
 
-VICUNA = ChatModelConfig(
+VICUNA_7B = ChatModelConfig(
     "lmsys/vicuna-7b-v1.3",
-    tokenizer_kwargs={
-        # Llama fast tokenizer is not good
-        "use_fast": False,
-    },
-    default_prompt=prompts.ZERO_SHOT,
-)
-
-VICUNA_33B = ChatModelConfig(
-    "lmsys/vicuna-33b-v1.3",
     tokenizer_kwargs={
         # Llama fast tokenizer is not good
         "use_fast": False,
@@ -113,14 +104,39 @@ VICUNA_33B = ChatModelConfig(
     default_prompt=prompts.FEW_SHOT,
 )
 
+VICUNA_13B = ChatModelConfig(
+    "lmsys/vicuna-13b-v1.3",
+    tokenizer_kwargs={
+        "use_fast": False
+    },
+    default_prompt=prompts.FEW_SHOT,
+)
+
+VICUNA_33B = ChatModelConfig(
+    "lmsys/vicuna-33b-v1.3",
+    tokenizer_kwargs={
+        "use_fast": False
+    },
+    default_prompt=prompts.FEW_SHOT,
+)
+
 MEDCUNA_7B = ChatModelConfig(
     "lmsys/vicuna-7b-v1.3",
     tokenizer_kwargs={
-        # Llama fast tokenizer is not good
         "use_fast": False
     },
     default_prompt=prompts.ZERO_SHOT,
     peft_adapter="/home/jovyan/workspace/models/medcuna-7b",
+)
+
+LLAMA2_7B = ChatModelConfig(
+    "meta-llama/Llama-2-7b-chat-hf",
+    max_length=4096,
+    default_prompt=prompts.FEW_SHOT,
+    conversation_kwargs={
+        "roles": ("user", "assistant"),
+        "stop_str": "user",
+    }
 )
 
 REDPAJAMA_INSTRUCT = ChatModelConfig(

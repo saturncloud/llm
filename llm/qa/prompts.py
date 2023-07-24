@@ -25,7 +25,7 @@ class Prompt:
             **self.default_kwargs,
             **kwargs,
         }
-        return self.template.format(**kwargs)
+        return self.template.format(**kwargs).strip()
 
 
 @dataclass
@@ -62,11 +62,12 @@ ZERO_SHOT = ContextPrompt(
 
     {context}
     {roles[0]}: {question}
-    {roles[1]}:
+    {roles[1]}: {answer}
     """,
-    inputs=["context", "roles", "question"],
+    inputs=["context", "roles", "question", "answer"],
     default_kwargs={
         "roles": ["Question", "Answer"],
+        "answer": "",
     },
 )
 
@@ -92,11 +93,12 @@ FEW_SHOT = ContextPrompt(
 
     {context}
     {roles[0]}: {question}
-    {roles[1]}:
+    {roles[1]}: {answer}
     """,
-    inputs=["roles", "context_label", "context", "question"],
+    inputs=["roles", "context_label", "context", "question", "answer"],
     default_kwargs={
         "roles": ["Question", "Answer"],
+        "answer": ""
     },
 )
 
@@ -124,11 +126,12 @@ STANDALONE_QUESTION = Prompt(
 
     {conversation}
     {roles[0]}: {question}
-    Standalone {roles[0]}:
+    Standalone {roles[0]}: {answer}
     """,
-    inputs=["roles", "conversation", "question"],
+    inputs=["roles", "conversation", "question", "answer"],
     default_kwargs={
         "roles": ["Question", "Answer"],
+        "answer": ""
     },
 )
 

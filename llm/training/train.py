@@ -35,9 +35,9 @@ from fastchat.train.train import (
     make_supervised_data_module,
 )
 
-from fastchat.train.llama_flash_attn_monkey_patch import (
-    replace_llama_attn_with_flash_attn,
-)
+# from fastchat.train.llama_flash_attn_monkey_patch import (
+#     replace_llama_attn_with_flash_attn,
+# )
 
 
 @dataclass
@@ -108,8 +108,8 @@ def get_peft_state_maybe_zero_3(named_params, bias):
 
 
 def train(args: TuningArgs):
-    if args.flash_attn.enabled:
-        replace_llama_attn_with_flash_attn()
+    # if args.flash_attn.enabled:
+    #     replace_llama_attn_with_flash_attn()
 
     device_map = None
     if args.lora.q_lora:
@@ -130,8 +130,8 @@ def train(args: TuningArgs):
         args.model.model_name_or_path,
         cache_dir=args.training.cache_dir,
         device_map=device_map,
-        load_in_8bit=True,
-        torch_dtype=compute_dtype,
+        # load_in_8bit=True,
+        # torch_dtype=compute_dtype,
         quantization_config=BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_use_double_quant=True,

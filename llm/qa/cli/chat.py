@@ -22,7 +22,7 @@ def chat_cli(input_path: str, input_type: Optional[str], index_path: Optional[st
         if os.path.isfile(_index_path):
             index_path = _index_path
 
-    model_config = model_configs.VICUNA
+    model_config = model_configs.VICUNA_7B
     vector_store = DatasetVectorStore(dataset, QAEmbeddings(context_model), index_path=index_path)
     qa_session = QASession.from_model_config(model_config, vector_store)
 

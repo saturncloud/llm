@@ -24,6 +24,12 @@
             "weight_decay": "auto"
         }
     },
+    "scheduler": {
+        "type": "WarmupLR",
+        "params": {
+
+        }
+    },
     "activation_checkpointing": {
         "partition_activations": true,
         "contiguous_memory_optimization": true

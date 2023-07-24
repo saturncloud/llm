@@ -1,44 +1,45 @@
 import os
-import logging
+import datetime
+import pathlib
 from typing import Any, Dict, List, Tuple
 
 from datasets import load_dataset
-import deepspeed
 import torch
-from trl import SFTTrainer
 from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
 from peft.utils import get_peft_model_state_dict
-from transformers import AutoModelForCausalLM, AutoTokenizer, DataCollatorForLanguageModeling, PreTrainedTokenizerBase, Trainer, TrainingArguments
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, DataCollatorForLanguageModeling, PreTrainedTokenizerBase, Trainer, TrainingArguments
 
 from llm.qa.prompts import ZERO_SHOT
 
 
-BASE_MODEL = "lmsys/vicuna-7b-v1.3"
+NAME = "medcuna-13b"
+BASE_MODEL = "lmsys/vicuna-13b-v1.3"
 MODEL_MAX_LENGTH = 2048
 TRAIN_DATASET = {
     "path": "pubmed_qa",
     "name": "pqa_unlabeled",
-    "split": "train[:20]",
+    "split": "train[:6000]",
 }
 EVAL_DATASET = {
     "path": "pubmed_qa",
     "name": "pqa_unlabeled",
-    "split": "train[-6000:]",
+    "split": "train[-20:]",
 }
+IGNORE_TOKEN_ID = -100
+DEBUGGING = True
 
 WORLD_SIZE = int(os.getenv("WORLD_SIZE", 1))
 LOCAL_RANK = int(os.getenv("LOCAL_RANK", 0))
-MODEL_OUTPUT_DIR = os.getenv("MODEL_OUTPUT_DIR", "models/")
+GLOBAL_RANK = int(os.getenv("RANK", 0))
 TRAINING_DIR = os.path.dirname(__file__)
+LOCAL_MODELS_DIR = os.getenv("LOCAL_MODELS_DIR", "models/")
+SATURNFS_MODELS_DIR = os.getenv("SATURNFS_MODELS_DIR", None)
 
 
-def prompt_formatting_func(batch: Dict[str, List[Any]]):
-    prompts = []
-    for question, context, long_answer in zip(batch["question"], batch["context"], batch["long_answer"]):
-        prompt = ZERO_SHOT.render(context["contexts"], question=question)
-        prompt += " " + long_answer
-        prompts.append(prompt)
-    return prompts
+def has_checkpoint(dir: str) -> bool:
+    if list(pathlib.Path(dir).glob("checkpoint-*")):
+        return True
+    return False
 
 
 def load_base_model(lora_config: LoraConfig, gradient_checkpointing: bool = True) -> Tuple[PeftModel, PreTrainedTokenizerBase]:
@@ -47,6 +48,7 @@ def load_base_model(lora_config: LoraConfig, gradient_checkpointing: bool = True
         model_max_length=MODEL_MAX_LENGTH,
         padding_side="right",
         use_fast=False,
+        legacy=False,
     )
     tokenizer.pad_token = tokenizer.unk_token
 
@@ -56,8 +58,12 @@ def load_base_model(lora_config: LoraConfig, gradient_checkpointing: bool = True
     )
     model = AutoModelForCausalLM.from_pretrained(
         BASE_MODEL,
-        load_in_8bit=True,
-        torch_dtype=torch.bfloat16,
+        quantization_config=BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+        ),
         device_map=device_map,
     )
     model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=gradient_checkpointing)
@@ -70,37 +76,92 @@ def load_base_model(lora_config: LoraConfig, gradient_checkpointing: bool = True
     model = get_peft_model(model, lora_config)
     model.config.use_cache=False
 
-    # if gradient_checkpointing:
-    #     model.enable_input_require_grads()
-
     if LOCAL_RANK == 0:
         model.print_trainable_parameters()
 
     return model, tokenizer
 
 
+def process_data(
+    qa_example: Dict[str, Any],
+    tokenizer: PreTrainedTokenizerBase,
+) -> Dict:
+    roles = ["Question", "Answer"]
+    context: Dict[str, Any] = qa_example["context"]
+    question: str = qa_example["question"]
+    answer: str = qa_example["long_answer"]
+
+    prompt = ZERO_SHOT.render(
+        context["contexts"], roles=roles, question=question, answer=answer
+    )
+
+    # Tokenize conversations
+    input_ids: torch.Tensor = tokenizer(
+        prompt,
+        return_tensors="pt",
+        padding="max_length",
+        max_length=tokenizer.model_max_length,
+        truncation=True,
+    ).input_ids[0]
+    target = input_ids.clone()
+
+    # Mask targets. Only want to train on responses to the questions, not on how
+    # to generate questions/contexts.
+    sep = f"\n{roles[1]}: "
+    split = prompt.split(sep)
+    assert len(split) == 2
+    split[0] += sep
+
+    instruction_len = len(tokenizer(split[0], add_special_tokens=False).input_ids)
+    target[:instruction_len] = IGNORE_TOKEN_ID
+
+    return dict(
+        input_ids=input_ids,
+        labels=target,
+        attention_mask=input_ids.ne(tokenizer.pad_token_id),
+    )
+
+
+class LazySupervisedDataset(torch.utils.data.Dataset):
+    """Dataset for supervised fine-tuning."""
+
+    def __init__(self, raw_data, tokenizer: PreTrainedTokenizerBase, cache_data: bool = False):
+        super(LazySupervisedDataset, self).__init__()
+        self.tokenizer = tokenizer
+        self.raw_data = raw_data
+        self.cached_data_dict = {}
+
+    def __len__(self):
+        return len(self.raw_data)
+
+    def __getitem__(self, i) -> Dict[str, torch.Tensor]:
+        if i in self.cached_data_dict:
+            return self.cached_data_dict[i]
+
+        ret = process_data(self.raw_data[i], self.tokenizer)
+        self.cached_data_dict[i] = ret
+        return ret
+
+
 def tune():
-    output_dir = os.path.join(MODEL_OUTPUT_DIR, "medcuna-7b/")
-    # TODO: Need to wrap in something like LazySupervisedDataset
-    dataset = load_dataset("pubmed_qa", "pqa_unlabeled", split="train[:10%]")
+    output_dir = os.path.join(LOCAL_MODELS_DIR, NAME)
+    dataset = load_dataset(**TRAIN_DATASET)
 
     training_args = TrainingArguments(
         output_dir,
         do_train=True,
         bf16=True,
         optim="adamw_torch_fused",
+        lr_scheduler_type="cosine",
         auto_find_batch_size=True,
         gradient_accumulation_steps=8,
         num_train_epochs=3,
-        logging_steps=1,
-        save_strategy="steps",
-        save_steps=1000,
-        save_total_limit=20,
+        save_strategy="epoch",
         learning_rate=2e-5,
         warmup_ratio=0.001,
+        logging_steps=1,
         gradient_checkpointing=True,
         ddp_find_unused_parameters=False,
-        deepspeed=os.path.join(TRAINING_DIR, "deepspeed_configs/bf16.json"),
     )
     lora_config = LoraConfig(
         r=8,
@@ -112,30 +173,26 @@ def tune():
     )
     model, tokenizer = load_base_model(lora_config, gradient_checkpointing=training_args.gradient_checkpointing)
     data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
+    supervised_dataset = LazySupervisedDataset(dataset, tokenizer)
 
-    # trainer = Trainer(
-    #     model,
-    #     args=training_args,
-    #     data_collator=data_collator,
-    #     train_dataset=dataset,
-    #     tokenizer=tokenizer,
-    #     # max_seq_length=MODEL_MAX_LENGTH,
-    # )
-    trainer = SFTTrainer(
+    trainer = Trainer(
         model,
         args=training_args,
+        data_collator=data_collator,
+        train_dataset=supervised_dataset,
         tokenizer=tokenizer,
-        train_dataset=dataset,
-        peft_config=lora_config,
-        formatting_func=prompt_formatting_func,
-        max_seq_length=MODEL_MAX_LENGTH,
-        packing=False,
     )
-    trainer.train()
+    trainer.train(resume_from_checkpoint=has_checkpoint(output_dir))
 
     state_dict = get_peft_model_state_dict(model)
-    if LOCAL_RANK == 0:
+    if GLOBAL_RANK == 0:
         model.save_pretrained(output_dir, state_dict=state_dict)
+        if SATURNFS_MODELS_DIR:
+            from saturnfs import SaturnFS
+            timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H.%M.%S")
+            remote_dir = os.path.join(SATURNFS_MODELS_DIR, f"{NAME}-{timestamp}")
+            sfs = SaturnFS()
+            sfs.put(output_dir, remote_dir, recursive=True)
 
 
 if __name__ == "__main__":

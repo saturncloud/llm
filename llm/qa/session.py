@@ -24,13 +24,11 @@ class QASession:
         vector_store: VectorStore,
         conv: ConversationBufferWindowMemory,
         prompt: ContextPrompt = ZERO_SHOT,
-        conv_history: int = 5,
         debug: bool = False,
     ):
         self.engine = engine
         self.vector_store = vector_store
         self.conv = conv
-        self.conv_history = conv_history
         self.prompt = prompt
         self.debug = debug
         self.results: List[Document] = []
@@ -51,12 +49,12 @@ class QASession:
         conv = model_config.new_conversation()
         return cls(engine, vector_store, conv, prompt or model_config.default_prompt, **kwargs)
 
-    def stream_answer(self, question: str, update_context: bool = False, **kwargs) -> Iterable[str]:
+    def stream_answer(self, question: str, update_context: bool = False, with_prefix: bool = False, **kwargs) -> Iterable[str]:
         """
         Stream response to the given question using the session's prompt and contexts.
         """
         last_message = self.last_message
-        if isinstance(last_message, AIMessage) and last_message.content:
+        if isinstance(last_message, AIMessage):
             # Question has not been appended to conversation yet
             self.append_question(question)
 
@@ -73,9 +71,13 @@ class QASession:
             "top_p": 0.9,
             **kwargs,
         }
+        prefix = ""
+        if with_prefix:
+            prefix = self.format_answer("")
+
         for output_text in self.engine.generate_stream(input_text, **gen_kwargs):
             output_text = output_text.strip()
-            yield output_text
+            yield prefix + output_text
 
         self.append_answer(output_text)
         if self.debug:
@@ -141,7 +143,7 @@ class QASession:
 
     @property
     def roles(self) -> Tuple[str, str]:
-        return [self.conv.human_prefix, self.conv.ai_prefix]
+        return (self.conv.human_prefix, self.conv.ai_prefix)
 
     @property
     def has_history(self) -> bool:
@@ -161,10 +163,10 @@ class QASession:
         """
         history = []
         if not range_start:
-            if self.conv_history <= 0:
+            if self.conv.k <= 0:
                 return ""
 
-            range_start = -2 * self.conv_history
+            range_start = -2 * self.conv.k
             if len(self.conv.buffer) > -range_start:
                 first_message = self.conv.buffer[range_start]
                 if isinstance(first_message, AIMessage):
@@ -177,12 +179,17 @@ class QASession:
 
         for message in messages:
             if isinstance(message, HumanMessage):
-                role = self.conv.human_prefix
+                history.append(self.format_question(message.content))
             else:
-                role = self.conv.ai_prefix
-            history.append(f"{role}: {message.content}")
+                history.append(self.format_answer(message.content))
 
         return separator.join(history)
+
+    def format_question(self, question: str) -> str:
+        return f"{self.conv.human_prefix}: {question}"
+
+    def format_answer(self, answer: str) -> str:
+        return f"{self.conv.ai_prefix}: {answer}"
 
     def clear(self, keep_results: bool = False):
         self.conv.clear()

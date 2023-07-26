@@ -49,15 +49,11 @@ class TransformersEngine(InferenceEngine):
         echo_prompt: bool = False,
         stop_token_ids: Optional[List[int]] = None,
         stop_str: Union[str, List[str]] = "",
-        **logit_kwargs: Any,
-    ):
+        **logits_processor_kwargs: Any,
+    ) -> Iterable[str]:
         logits_processor: Optional[LogitsProcessorList] = None
-        do_sampling: bool = True
-        if logit_kwargs:
-            logit_args = LogitsProcessorArgs(**logit_kwargs)
-            logits_processor = logit_args.load()
-            if logit_args.temperature < 1e-5 or logit_args.top_p < 1e-8:
-                do_sampling = False
+        logits_config = LogitsProcessorConfig(**logits_processor_kwargs)
+        logits_processor = logits_config.load()
 
         if not stop_token_ids:
             if self.tokenizer.eos_token_id is not None:
@@ -75,6 +71,7 @@ class TransformersEngine(InferenceEngine):
 
         past_key_values = out = None
         token: Optional[int] = None
+        stopped = False
         for i in range(max_new_tokens):
             if not token:
                 # First pass, must calculate attention for entire input
@@ -94,29 +91,24 @@ class TransformersEngine(InferenceEngine):
             past_key_values = out.past_key_values
 
             # Process output
-            if logits_processor:
-                output_tensor = torch.as_tensor([output_ids], device=logits.device)
-                last_token_logits = logits_processor(output_tensor, logits[:, -1, :])[0]
-            else:
-                last_token_logits = logits[0, -1, :]
+            output_tensor = torch.as_tensor([output_ids], device=logits.device)
+            last_token_logits = logits_processor(output_tensor, logits[:, -1, :])[0]
 
-            if not do_sampling:
-                # Take most probable token
-                token = int(torch.argmax(last_token_logits))
-            else:
+            if logits_config.do_sampling:
                 # Sample token from the distribution
                 probs = torch.softmax(last_token_logits, dim=-1)
                 token = int(torch.multinomial(probs, num_samples=1))
+            else:
+                # Take most probable token
+                token = int(torch.argmax(last_token_logits))
             output_ids.append(token)
 
-            # Check stopping conditions and decode output
+            # Check stopping conditions
             if token in stop_token_ids or i == max_new_tokens - 1:
                 stopped = True
-            else:
-                stopped = False
 
-            # Yield current output
             if i % stream_interval == 0 or stopped:
+                # Decode and yield current output
                 if echo_prompt:
                     tmp_output_ids = output_ids
                     rfind_start = len_prompt
@@ -131,19 +123,17 @@ class TransformersEngine(InferenceEngine):
                     clean_up_tokenization_spaces=True,
                 )
 
-                stop_pos, partially_stopped = check_stop(output, stop_str, rfind_start)
+                stop_pos, partially_stopped = check_stop_str(output, stop_str, rfind_start)
                 if stop_pos != -1:
                     output = output[:stop_pos]
                     stopped = True
 
-                # prevent yielding partial stop sequence
+                # prevent yielding partially completed stop sequences
                 if not partially_stopped:
                     yield output
 
             if stopped:
                 break
-
-        yield output
 
         # clean
         del past_key_values, out
@@ -206,12 +196,20 @@ class StreamRequest:
 
 
 @dataclass
-class LogitsProcessorArgs:
+class LogitsProcessorConfig:
     temperature: float = 1.0
     top_p: float = 1.0
     top_k: int = -1
     repetition_penalty: float = 1.0
+    do_sampling: Optional[bool] = None
     processors: List[LogitsProcessor, LogitsWarper] = field(default_factory=list)
+
+    def __post_init__(self):
+        if self.do_sampling is None:
+            if self.temperature < 1e-5 or self.top_p < 1e-8:
+                self.do_sampling = False
+            else:
+                self.do_sampling = True
 
     def load(self) -> LogitsProcessorList:
         processors = []
@@ -228,11 +226,11 @@ class LogitsProcessorArgs:
         return LogitsProcessorList(processors)
 
 
-def check_stop(
+def check_stop_str(
     output: str, stop_strings: Union[str, List[str]], rfind_start: int = 0
 ) -> Tuple[int, bool]:
     """
-    Check for stopping conditions on the output
+    Check for string based stopping conditions on the output
 
     Return lowest index of any stop strings found, and a bool indicating if a partial stop_str
     was found at the end of the output.
@@ -251,7 +249,7 @@ def check_stop(
             if stop_pos == -1 or pos < stop_pos:
                 stop_pos = pos
         else:
-            # Check if partial stop_str at end of output
+            # Check for partial stop_str
             for i in range(0, min(len(output), len(stop_str))):
                 if stop_str.startswith(output[-i:]):
                     partial_stop = True

@@ -17,6 +17,7 @@ default_model_kwargs = {
 }
 default_tokenizer_kwargs = {
     "use_fast": True,
+    # https://github.com/huggingface/transformers/pull/24565
     "legacy": False,
 }
 default_conversation_kwargs = {

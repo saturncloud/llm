@@ -35,9 +35,7 @@ def chat_cli(input_path: str, input_type: Optional[str], index_path: Optional[st
         qa_session.search_context(question)
 
         prev_output = ""
-        qa_session.append_answer("")
-        print(qa_session.get_history(range_start=-1), end="", flush=True)
-        for output_text in qa_session.stream_answer(question):
+        for output_text in qa_session.stream_answer(question, with_prefix=True):
             new_output = output_text[len(prev_output):]
             prev_output = output_text
             print(new_output, end="", flush=True)

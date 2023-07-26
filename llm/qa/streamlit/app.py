@@ -6,7 +6,7 @@ from langchain.vectorstores.base import VectorStore
 
 from llm.qa import model_configs
 from llm.qa.embedding import DEFAULT_MODEL, QAEmbeddings
-from llm.qa.inference import TransformersEngine, InferenceEngine, QueuedEngine
+from llm.qa.inference import TransformersEngine, InferenceEngine, MultiprocessEngine
 from llm.qa.session import QASession
 from llm.qa.parser import DataFields
 from llm.qa.vector_store import DatasetVectorStore
@@ -19,16 +19,18 @@ model_config = model_configs.VICUNA
 
 MARKDOWN_LINEBREAK = "  \n"
 
-st.set_page_config(page_title="QA Chat", page_icon=":robot_face:", layout="wide")
-
 
 @st.cache_resource
-def get_inference_engine() -> InferenceEngine:
-    # Load chat model and inference engine. Shared by all sessions
-    model, tokenizer = model_config.load()
-    engine = TransformersEngine(model, tokenizer, max_length=model_config.max_length)
-    # Wrap with QueuedEngine so each streamlit session has dedicated access during inference
-    return QueuedEngine(engine)
+def get_inference_engine(num_workers: Optional[int] = None) -> InferenceEngine:
+    # MultiprocessEngine ensures sessions gets dedicated access to a model
+    # while their request is being processed. By default, one inference engine will
+    # be loaded to each available GPU device.
+    return MultiprocessEngine(_load_engine, num_workers=num_workers)
+
+
+def _load_engine(local_rank: int) -> TransformersEngine:
+    # Loads model to the device specified by rank, and initialized the inference engine
+    return TransformersEngine.from_model_config(model_config, device=local_rank)
 
 
 @st.cache_resource
@@ -60,77 +62,81 @@ def filter_contexts():
     qa_session.set_contexts(contexts)
 
 
-engine = get_inference_engine()
-vector_store = get_vector_store(QA_DATASET_PATH)
-qa_session = get_qa_session(engine, vector_store)
-output = st.text("")
-included: List[bool] = []
+# Ensure only the main proc interacts with streamlit
+if __name__ == "__main__":
+    st.set_page_config(page_title="QA Chat", page_icon=":robot_face:", layout="wide")
 
-clear_convo = st.button("clear conversation")
-if clear_convo:
-    # Clear conversation, but keep system prompt in case the
-    # user wants to re-query over the previous context.
-    qa_session.clear(keep_results=True)
+    engine = get_inference_engine()
+    vector_store = get_vector_store(QA_DATASET_PATH)
+    qa_session = get_qa_session(engine, vector_store)
+    output = st.text("")
+    included: List[bool] = []
 
-with st.form(key="input_form", clear_on_submit=True):
-    # Collect user input
-    user_input = st.text_area("You:", key="input", height=100)
-    placeholder = st.container()
-    query_submitted = st.form_submit_button(label="Query")
+    clear_convo = st.button("clear conversation")
+    if clear_convo:
+        # Clear conversation, but keep system prompt in case the
+        # user wants to re-query over the previous context.
+        qa_session.clear(keep_results=True)
 
-    rephrase_question = placeholder.checkbox(
-        "Rephrase question with history",
-        key="rephrase_question",
-        value=True,
-        disabled=not (query_submitted or qa_session.has_history),
-    )
-    search_new_context = placeholder.checkbox(
-        "Search new context",
-        key="search_new_context",
-        value=True,
-        disabled=not (query_submitted or qa_session.results),
-    )
+    with st.form(key="input_form", clear_on_submit=True):
+        # Collect user input
+        user_input = st.text_area("You:", key="input", height=100)
+        placeholder = st.container()
+        query_submitted = st.form_submit_button(label="Query")
 
-    if query_submitted and not user_input:
-        query_submitted = False
+        rephrase_question = placeholder.checkbox(
+            "Rephrase question with history",
+            key="rephrase_question",
+            value=True,
+            disabled=not (query_submitted or qa_session.has_history),
+        )
+        search_new_context = placeholder.checkbox(
+            "Search new context",
+            key="search_new_context",
+            value=True,
+            disabled=not (query_submitted or qa_session.results),
+        )
 
-question = ""
-if query_submitted and not clear_convo:
-    # Write user input out to streamlit, then search for contexts
-    qa_session.append_question(user_input)
-    output.write(qa_session.get_history(separator=MARKDOWN_LINEBREAK))
+        if query_submitted and not user_input:
+            query_submitted = False
 
-    with st.spinner("Searching..."):
-        if rephrase_question:
-            question = qa_session.rephrase_question(user_input)
+    question = ""
+    if query_submitted and not clear_convo:
+        # Write user input out to streamlit, then search for contexts
+        qa_session.append_question(user_input)
+        output.write(qa_session.get_history(separator=MARKDOWN_LINEBREAK))
+
+        with st.spinner("Searching..."):
+            if rephrase_question:
+                question = qa_session.rephrase_question(user_input)
+            else:
+                question = user_input
+            if search_new_context:
+                qa_session.search_context(question)
+
+
+    if qa_session.results:
+        # Write contexts out to streamlit, with checkboxes to filter what is sent to the LLM
+        with st.form(key="checklists"):
+            for i, doc in enumerate(qa_session.results):
+                include = st.checkbox("include in chat context", key=i, value=True)
+                included.append(include)
+                st.write(doc.page_content)
+                st.write({k: v for k, v in doc.metadata.items() if k != DataFields.EMBEDDING})
+                st.divider()
+
+            checklist_submitted = st.form_submit_button(label="Filter")
+            if checklist_submitted:
+                filter_contexts()
+
+    if not clear_convo:
+        if query_submitted:
+            # Stream response from LLM, updating chat window at each step
+            history = qa_session.get_history(separator=MARKDOWN_LINEBREAK, range_start=0) + MARKDOWN_LINEBREAK
+            for text in qa_session.stream_answer(question, with_prefix=True):
+                message = history + text
+                output.write(message)
         else:
-            question = user_input
-        if search_new_context:
-            qa_session.search_context(question)
-
-
-if qa_session.results:
-    # Write contexts out to streamlit, with checkboxes to filter what is sent to the LLM
-    with st.form(key="checklists"):
-        for i, doc in enumerate(qa_session.results):
-            include = st.checkbox("include in chat context", key=i, value=True)
-            included.append(include)
-            st.write(doc.page_content)
-            st.write({k: v for k, v in doc.metadata.items() if k != DataFields.EMBEDDING})
-            st.divider()
-
-        checklist_submitted = st.form_submit_button(label="Filter")
-        if checklist_submitted:
-            filter_contexts()
-
-if not clear_convo:
-    if query_submitted:
-        # Stream response from LLM, updating chat window at each step
-        history = qa_session.get_history(separator=MARKDOWN_LINEBREAK, range_start=0) + MARKDOWN_LINEBREAK
-        for text in qa_session.stream_answer(question, with_prefix=True):
-            message = history + text
+            # Write existing message history
+            message = qa_session.get_history(separator=MARKDOWN_LINEBREAK)
             output.write(message)
-    else:
-        # Write existing message history
-        message = qa_session.get_history(separator=MARKDOWN_LINEBREAK)
-        output.write(message)

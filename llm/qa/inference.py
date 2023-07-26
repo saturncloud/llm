@@ -4,11 +4,14 @@ from dataclasses import dataclass, field
 import gc
 
 from queue import Queue
+from multiprocessing import Pipe, Process, set_start_method
 from threading import Thread
-from typing import Any, Iterable, List, Optional, Tuple, Union
+from typing import Any, Callable, Iterable, List, Optional, Tuple, Union
 
 import torch
 from transformers import PreTrainedModel, PreTrainedTokenizerBase, LogitsProcessorList, LogitsProcessor, LogitsWarper, RepetitionPenaltyLogitsProcessor, TemperatureLogitsWarper, TopPLogitsWarper, TopKLogitsWarper
+
+from llm.qa.model_configs import ModelConfig
 
 
 class InferenceEngine(ABC):
@@ -39,6 +42,11 @@ class TransformersEngine(InferenceEngine):
         self.model = model
         self.tokenizer = tokenizer
         self.max_length = max_length
+
+    @classmethod
+    def from_model_config(cls, model_config: ModelConfig, **kwargs) -> TransformersEngine:
+        model, tokenizer = model_config.load(**kwargs)
+        return cls(model, tokenizer, max_length=model_config.max_length)
 
     @torch.inference_mode()
     def generate_stream(
@@ -233,31 +241,40 @@ class TransformersEngine(InferenceEngine):
         return super().get_answer(prompt, **kwargs)
 
 
-class QueuedEngine(InferenceEngine):
+class MultiprocessEngine(InferenceEngine):
     """
-    Run inference engines in background threads with queued requests/responses
+    Run inference engines in background processes with queued requests/responses
 
-    Enables thread-safe handling of concurrent requests to one or more engines
+    Enables thread-safe non-blocking inference across multiple devices
     """
+    def __init__(self, load_engine: Callable[[int], InferenceEngine], num_workers: Optional[int] = None):
+        # Required for CUDA
+        set_start_method("spawn")
 
-    def __init__(self, *engines: InferenceEngine):
-        self.queue: Queue[StreamRequest] = Queue()
-        for engine in engines:
-            self.add_watcher(engine)
+        if num_workers is None:
+            # TODO: Should we also check CUDA_VISIBLE_DEVICES?
+            num_workers = torch.cuda.device_count()
 
-    def add_watcher(self, engine: InferenceEngine) -> Thread:
-        def _watch():
-            while True:
-                request = self.queue.get()
-                for text in engine.generate_stream(request.prompt, **request.kwargs):
-                    request.output.put(text)
+        self.closed = False
+        self.queue: Queue[WorkerPipe] = Queue(num_workers)
+        self._pipes: List[WorkerPipe] = []
+        for i in range(num_workers):
+            pipe = WorkerPipe()
+            watch_proc = Process(None, self._watch, args=[pipe, load_engine, i], daemon=True)
+            watch_proc.start()
+            self.queue.put(pipe)
+            self._pipes.append(pipe)
 
-                # None indicates to the requester that the stream is completed
-                request.output.put(None)
+    @staticmethod
+    def _watch(pipe: WorkerPipe, load_engine: Callable[[int], InferenceEngine], local_rank: int):
+        engine = load_engine(local_rank)
+        while True:
+            request = pipe.get_request()
+            for text in engine.generate_stream(request.prompt, **request.kwargs):
+                pipe.send_response(text)
 
-        watch_thread = Thread(None, _watch, daemon=True)
-        watch_thread.start()
-        return watch_thread
+            # None indicates to the requester that the stream is completed
+            pipe.send_response(None)
 
     def generate_stream(
         self,
@@ -265,26 +282,63 @@ class QueuedEngine(InferenceEngine):
         **kwargs,
     ) -> Iterable[str]:
         request = StreamRequest(prompt, **kwargs)
-        self.queue.put(request)
+        # Wait for a worker to be available
+        pipe = self.queue.get()
+        # Send request
+        pipe.send_request(request)
         while True:
-            text = request.output.get()
-            request.output.task_done()
+            # Yied results until sentinel is recieved
+            text = pipe.get_response()
             if text is not None:
                 yield text
             else:
                 # Stream completed
                 break
 
+        self.queue.task_done()
+        if not self.closed:
+            # Add pipe back to queue to process new requests
+            self.queue.put(pipe)
+
+    def close(self):
+        self.closed = True
+        for pipe in self._pipes:
+            pipe.close()
+
 
 class StreamRequest:
     """
-    An inference request to be enqueued
+    Wraps an inference request to be processed by a worker
     """
     def __init__(self, prompt: str, **kwargs) -> None:
         self.prompt = prompt
         self.kwargs = kwargs
-        # When retrieved value is None, stream is completed
-        self.output: Queue[Optional[str]] = Queue()
+
+
+class WorkerPipe:
+    """
+    Manages communication between an inference worker and the main process
+    """
+    def __init__(self):
+        self.parent_conn, self.child_conn = Pipe()
+
+    def close(self):
+        self.parent_conn.close()
+        self.child_conn.close()
+
+    ### Main proc methods ####
+    def send_request(self, request: StreamRequest):
+        self.parent_conn.send(request)
+
+    def get_response(self) -> Optional[str]:
+        return self.parent_conn.recv()
+
+    ### Worker methods ####
+    def get_request(self) -> StreamRequest:
+        return self.child_conn.recv()
+
+    def send_response(self, response: Optional[str]):
+        self.child_conn.send(response)
 
 
 @dataclass

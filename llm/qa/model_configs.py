@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Tuple, Type
+from typing import Any, Dict, Optional, Tuple, Type, Union
 import torch
 from langchain.memory.buffer_window import ConversationBufferWindowMemory
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
@@ -56,10 +56,13 @@ class ModelConfig:
             self.model_kwargs = merge_dict(self.model_kwargs, default_model_kwargs)
             self.tokenizer_kwargs = merge_dict(self.tokenizer_kwargs, default_tokenizer_kwargs)
 
-    def load(self) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
+    def load(self, device: Optional[Union[int, str]] = None) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
         model_cls = self.model_cls or AutoModelForCausalLM
         tokenizer_cls = self.tokenizer_cls or AutoTokenizer
-        model = model_cls.from_pretrained(self.name, **self.model_kwargs)
+        model_kwargs = {**self.model_kwargs}
+        if device:
+            model_kwargs["device_map"] = {"": device}
+        model = model_cls.from_pretrained(self.name, **model_kwargs)
         tokenizer = tokenizer_cls.from_pretrained(self.name, **self.tokenizer_kwargs)
         return model, tokenizer
 

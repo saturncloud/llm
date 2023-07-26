@@ -1,12 +1,14 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+import gc
 
 from queue import Queue
 from threading import Thread
-from typing import Iterable, Optional
+from typing import Any, Iterable, List, Optional, Tuple, Union
 
-from fastchat.serve.inference import generate_stream
-from transformers import PreTrainedModel, PreTrainedTokenizerBase
+import torch
+from transformers import PreTrainedModel, PreTrainedTokenizerBase, LogitsProcessorList, LogitsProcessor, LogitsWarper, RepetitionPenaltyLogitsProcessor, TemperatureLogitsWarper, TopPLogitsWarper, TopKLogitsWarper
 
 
 class InferenceEngine(ABC):
@@ -24,10 +26,9 @@ class InferenceEngine(ABC):
         return answer
 
 
-class FastchatEngine(InferenceEngine):
+class TransformersEngine(InferenceEngine):
     """
-    Wrapper on FastChat's generate_stream that implements
-    the InferenceEngine interface
+    Generate a token stream from a prompt with the given transformer model
     """
     def __init__(
         self,
@@ -39,32 +40,115 @@ class FastchatEngine(InferenceEngine):
         self.tokenizer = tokenizer
         self.max_length = max_length
 
+    @torch.inference_mode()
     def generate_stream(
         self,
         prompt: str,
-        **kwargs,
-    ) -> Iterable[str]:
-        params = {
-            "prompt": prompt,
-            "temperature": 0.7,
-            "top_p": 0.9,
-            "repetition_penalty": 1.0,
-            "max_new_tokens": 512,
-            "echo": False,
-            **kwargs,
-        }
+        max_new_tokens: int = 256,
+        stream_interval: int = 2,
+        echo_prompt: bool = False,
+        stop_token_ids: Optional[List[int]] = None,
+        stop_str: Union[str, List[str]] = "",
+        **logit_kwargs: Any,
+    ):
+        logits_processor: Optional[LogitsProcessorList] = None
+        do_sampling: bool = True
+        if logit_kwargs:
+            logit_args = LogitsProcessorArgs(**logit_kwargs)
+            logits_processor = logit_args.load()
+            if logit_args.temperature < 1e-5 or logit_args.top_p < 1e-8:
+                do_sampling = False
 
-        output_stream = generate_stream(
-            self.model,
-            self.tokenizer,
-            params,
-            self.model.device,
-            context_len=self.max_length,
-        )
+        if not stop_token_ids:
+            if self.tokenizer.eos_token_id is not None:
+                stop_token_ids = [self.tokenizer.eos_token_id]
+            else:
+                stop_token_ids = []
 
-        for outputs in output_stream:
-            output_text = outputs["text"].strip()
-            yield output_text
+        len_prompt = len(prompt)
+        input_ids = self.tokenizer(prompt).input_ids
+        output_ids = list(input_ids)
+
+        max_src_len = self.max_length - max_new_tokens - 8
+        input_ids = input_ids[-max_src_len:]
+        input_echo_len = len(input_ids)
+
+        past_key_values = out = None
+        token: Optional[int] = None
+        for i in range(max_new_tokens):
+            if not token:
+                # First pass, must calculate attention for entire input
+                input_tensor = torch.as_tensor([input_ids], device=self.model.device)
+            else:
+                # Calculate attention on the latest token only, re-use attention
+                # for the previous tokens via past_key_values
+                input_tensor = torch.as_tensor([[token]], device=self.model.device)
+
+            # Run inference
+            out = self.model(
+                input_ids=input_tensor,
+                use_cache=True,
+                past_key_values=past_key_values,
+            )
+            logits = out.logits
+            past_key_values = out.past_key_values
+
+            # Process output
+            if logits_processor:
+                output_tensor = torch.as_tensor([output_ids], device=logits.device)
+                last_token_logits = logits_processor(output_tensor, logits[:, -1, :])[0]
+            else:
+                last_token_logits = logits[0, -1, :]
+
+            if not do_sampling:
+                # Take most probable token
+                token = int(torch.argmax(last_token_logits))
+            else:
+                # Sample token from the distribution
+                probs = torch.softmax(last_token_logits, dim=-1)
+                token = int(torch.multinomial(probs, num_samples=1))
+            output_ids.append(token)
+
+            # Check stopping conditions and decode output
+            if token in stop_token_ids or i == max_new_tokens - 1:
+                stopped = True
+            else:
+                stopped = False
+
+            # Yield current output
+            if i % stream_interval == 0 or stopped:
+                if echo_prompt:
+                    tmp_output_ids = output_ids
+                    rfind_start = len_prompt
+                else:
+                    tmp_output_ids = output_ids[input_echo_len:]
+                    rfind_start = 0
+
+                output = self.tokenizer.decode(
+                    tmp_output_ids,
+                    skip_special_tokens=True,
+                    spaces_between_special_tokens=False,
+                    clean_up_tokenization_spaces=True,
+                )
+
+                stop_pos, partially_stopped = check_stop(output, stop_str, rfind_start)
+                if stop_pos != -1:
+                    output = output[:stop_pos]
+                    stopped = True
+
+                # prevent yielding partial stop sequence
+                if not partially_stopped:
+                    yield output
+
+            if stopped:
+                break
+
+        yield output
+
+        # clean
+        del past_key_values, out
+        gc.collect()
+        torch.cuda.empty_cache()
 
 
 class QueuedEngine(InferenceEngine):
@@ -119,3 +203,58 @@ class StreamRequest:
         self.kwargs = kwargs
         # When retrieved value is None, stream is completed
         self.output: Queue[Optional[str]] = Queue()
+
+
+@dataclass
+class LogitsProcessorArgs:
+    temperature: float = 1.0
+    top_p: float = 1.0
+    top_k: int = -1
+    repetition_penalty: float = 1.0
+    additional: List[LogitsProcessor, LogitsWarper] = field(default_factory=list)
+
+    def load(self) -> LogitsProcessorList:
+        processors = []
+        if self.temperature != 1.0:
+            processors.append(TemperatureLogitsWarper(self.temperature))
+        if self.top_p < 1.0:
+            processors.append(TopPLogitsWarper(self.top_p))
+        if self.top_k > 0:
+            processors.append(TopKLogitsWarper(self.top_k))
+        if self.repetition_penalty != 1.0:
+            processors.append(RepetitionPenaltyLogitsProcessor(self.repetition_penalty))
+        if self.additional:
+            processors.extend(self.additional)
+        return LogitsProcessorList(processors)
+
+
+def check_stop(
+    output: str, stop_strings: Union[str, List[str]], rfind_start: int = 0
+) -> Tuple[int, bool]:
+    """
+    Check for stopping conditions on the output
+
+    Return lowest index of any stop strings found, and a bool indicating if a partial stop_str
+    was found at the end of the output.
+    """
+    if not stop_strings:
+        return -1, False
+    if isinstance(stop_strings, str):
+        stop_strings = [stop_strings]
+
+    partial_stop = False
+    stop_pos = -1
+    for stop_str in stop_strings:
+        pos = output.rfind(stop_str, rfind_start)
+        if pos != -1:
+            output = output[:pos]
+            if stop_pos == -1 or pos < stop_pos:
+                stop_pos = pos
+        else:
+            # Check if partial stop_str at end of output
+            for i in range(0, min(len(output), len(stop_str))):
+                if stop_str.startswith(output[-i:]):
+                    partial_stop = True
+                    break
+
+    return stop_pos, partial_stop

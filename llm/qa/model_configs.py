@@ -22,7 +22,6 @@ default_conversation_kwargs = {
     "roles": ("Question", "Answer"),
     "sep_style": SeparatorStyle.ADD_COLON_SINGLE,
     "sep": "\n",
-    "stop_str": "Question:",
 }
 
 
@@ -113,7 +112,6 @@ REDPAJAMA_INSTRUCT = ChatModelConfig(
     default_prompt=prompts.FEW_SHOT,
     conversation_kwargs={
         "roles": ("<human>", "<bot>"),
-        "stop_str": "<human>:",
     },
 )
 
@@ -121,7 +119,6 @@ REDPAJAMA_CHAT = ChatModelConfig(
     "togethercomputer/RedPajama-INCITE-7B-Chat",
     conversation_kwargs={
         "roles": ("<human>", "<bot>"),
-        "stop_str": "<human>:",
     }
 )
 

@@ -6,7 +6,7 @@ from langchain.vectorstores.base import VectorStore
 
 from llm.qa import model_configs
 from llm.qa.embedding import DEFAULT_MODEL, QAEmbeddings
-from llm.qa.inference import FastchatEngine, InferenceEngine, QueuedEngine
+from llm.qa.inference import TransformersEngine, InferenceEngine, QueuedEngine
 from llm.qa.session import QASession
 from llm.qa.parser import DataFields
 from llm.qa.vector_store import DatasetVectorStore
@@ -26,7 +26,7 @@ st.set_page_config(page_title="QA Chat", page_icon=":robot_face:", layout="wide"
 def get_inference_engine() -> InferenceEngine:
     # Load chat model and inference engine. Shared by all sessions
     model, tokenizer = model_config.load()
-    engine = FastchatEngine(model, tokenizer, max_length=model_config.max_length)
+    engine = TransformersEngine(model, tokenizer, max_length=model_config.max_length)
     # Wrap with QueuedEngine so each streamlit session has dedicated access during inference
     return QueuedEngine(engine)
 

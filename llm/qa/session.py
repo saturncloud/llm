@@ -6,7 +6,7 @@ from fastchat.conversation import Conversation
 from langchain.schema import Document
 from langchain.vectorstores.base import VectorStore
 
-from llm.qa.inference import FastchatEngine, InferenceEngine
+from llm.qa.inference import TransformersEngine, InferenceEngine
 from llm.qa.model_configs import ChatModelConfig
 from llm.qa.prompts import STANDALONE_QUESTION, ZERO_SHOT, ContextPrompt
 
@@ -46,7 +46,7 @@ class QASession:
     ) -> QASession:
         if engine is None:
             model, tokenizer = model_config.load()
-            engine = FastchatEngine(model, tokenizer, model_config.max_length)
+            engine = TransformersEngine(model, tokenizer, model_config.max_length)
         conv = model_config.new_conversation()
         return cls(engine, vector_store, conv, prompt or model_config.default_prompt, **kwargs)
 
@@ -61,20 +61,21 @@ class QASession:
 
         if update_context:
             self.search_context(question)
-        kwargs = {}
+        prompt_kwargs = {}
         if "roles" in self.prompt.inputs:
-            kwargs["roles"] = self.conv.roles
-        input_text = self.prompt.render(question=question, contexts=self.contexts, **kwargs)
+            prompt_kwargs["roles"] = self.conv.roles
+        input_text = self.prompt.render(question=question, contexts=self.contexts, **prompt_kwargs)
 
-        params = {
-            "stop": self.conv.stop_str,
-            "stop_token_ids": self.conv.stop_token_ids,
+        gen_kwargs = {
+            "stop_str": f"{self.conv.roles[0]}:",
+            "temperature": 0.7,
+            "top_p": 0.9,
             **kwargs,
         }
-        for output_text in self.engine.generate_stream(input_text, **params):
+        for output_text in self.engine.generate_stream(input_text, **gen_kwargs):
             yield output_text
 
-        self.conv.update_last_message(output_text.strip())
+        self.conv.messages[-1][1] = output_text.strip()
         if self.debug:
             print(f"\n** Context Input **\n{input_text}")
             print(f"\n** Context Answer **\n{output_text}")
@@ -92,8 +93,9 @@ class QASession:
             conversation=self.get_history(), roles=self.conv.roles, question=question
         )
         params = {
-            "stop": self.conv.stop_str,
-            "stop_token_ids": self.conv.stop_token_ids,
+            "stop_str": f"{self.conv.roles[0]}:",
+            "temperature": 0.7,
+            "top_p": 0.9,
             **kwargs,
         }
         standalone = self.engine.get_answer(input_text, **params)

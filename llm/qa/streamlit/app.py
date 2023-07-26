@@ -82,7 +82,7 @@ with st.form(key="input_form", clear_on_submit=True):
         "Rephrase question with history",
         key="rephrase_question",
         value=True,
-        disabled=not (query_submitted or qa_session.conv.messages),
+        disabled=not (query_submitted or qa_session.has_history),
     )
     search_new_context = placeholder.checkbox(
         "Search new context",
@@ -97,7 +97,8 @@ with st.form(key="input_form", clear_on_submit=True):
 question = ""
 if query_submitted and not clear_convo:
     # Write user input out to streamlit, then search for contexts
-    output.write(qa_session.get_history(separator=MARKDOWN_LINEBREAK, next_question=user_input))
+    qa_session.append_question(user_input)
+    output.write(qa_session.get_history(separator=MARKDOWN_LINEBREAK))
 
     with st.spinner("Searching..."):
         if rephrase_question:
@@ -107,8 +108,6 @@ if query_submitted and not clear_convo:
         if search_new_context:
             qa_session.search_context(question)
 
-        # Append question last so question rephrasing only looks at previous messages
-        qa_session.append_question(user_input)
 
 if qa_session.results:
     # Write contexts out to streamlit, with checkboxes to filter what is sent to the LLM
@@ -127,6 +126,8 @@ if qa_session.results:
 if not clear_convo:
     if query_submitted:
         # Stream response from LLM, updating chat window at each step
+        # Append empty answer to be filled in later
+        qa_session.append_answer("")
         message_string = qa_session.get_history(separator=MARKDOWN_LINEBREAK)
         for text in qa_session.stream_answer(question):
             message = message_string + text

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Optional, Tuple
 
-from fastchat.conversation import Conversation
+from langchain.memory.buffer_window import ConversationBufferWindowMemory
 from langchain.schema import Document
 from langchain.vectorstores.base import VectorStore
+from langchain.schema.messages import AIMessage, BaseMessage, HumanMessage
 
 from llm.qa.inference import TransformersEngine, InferenceEngine
 from llm.qa.model_configs import ChatModelConfig
@@ -21,7 +22,7 @@ class QASession:
         self,
         engine: InferenceEngine,
         vector_store: VectorStore,
-        conv: Conversation,
+        conv: ConversationBufferWindowMemory,
         prompt: ContextPrompt = ZERO_SHOT,
         conv_history: int = 5,
         debug: bool = False,
@@ -54,28 +55,29 @@ class QASession:
         """
         Stream response to the given question using the session's prompt and contexts.
         """
-        last_message = self.conv.messages[-1] if self.conv.messages else [None, None]
-        if last_message[0] == self.conv.roles[1] and last_message[1] is not None:
-            # Question has not been appended to conversation
+        last_message = self.last_message
+        if isinstance(last_message, AIMessage) and last_message.content:
+            # Question has not been appended to conversation yet
             self.append_question(question)
 
         if update_context:
             self.search_context(question)
         prompt_kwargs = {}
         if "roles" in self.prompt.inputs:
-            prompt_kwargs["roles"] = self.conv.roles
+            prompt_kwargs["roles"] = self.roles
         input_text = self.prompt.render(question=question, contexts=self.contexts, **prompt_kwargs)
 
         gen_kwargs = {
-            "stop_str": f"{self.conv.roles[0]}:",
-            "temperature": 0.7,
+            "stop_str": [f"{self.conv.human_prefix}:", f"{self.prompt.default_context_label}:"],
+            "temperature": 0.9,
             "top_p": 0.9,
             **kwargs,
         }
         for output_text in self.engine.generate_stream(input_text, **gen_kwargs):
+            output_text = output_text.strip()
             yield output_text
 
-        self.conv.messages[-1][1] = output_text.strip()
+        self.append_answer(output_text)
         if self.debug:
             print(f"\n** Context Input **\n{input_text}")
             print(f"\n** Context Answer **\n{output_text}")
@@ -87,34 +89,41 @@ class QASession:
         Enables users to implicitly refer to previous messages. Relevant information is
         added to the question, which then gets used both for semantic search the final answer.
         """
-        if len(self.conv.messages) == 0:
+        if not self.has_history:
             return question
+
+        range_end: Optional[int] = None
+        if isinstance(self.last_message, HumanMessage) and self.last_message.content == question:
+            if len(self.conv.buffer) == 1:
+                # No history other than the current question
+                return question
+            range_end = -1
+
+        history = self.get_history(range_end=range_end)
         input_text = STANDALONE_QUESTION.render(
-            conversation=self.get_history(), roles=self.conv.roles, question=question
+            conversation=history, roles=self.roles, question=question
         )
         params = {
-            "stop_str": f"{self.conv.roles[0]}:",
+            "stop_str": f"{self.conv.human_prefix}:",
             "temperature": 0.7,
             "top_p": 0.9,
             **kwargs,
         }
-        standalone = self.engine.get_answer(input_text, **params)
+        standalone = self.engine.get_answer(input_text, **params).strip()
         if self.debug:
             print(f"\n** Standalone Input **\n{input_text}")
             print(f"\n** Standalone Question **\n{standalone}")
         return standalone
 
     def append_question(self, question: str):
-        """
-        Append question and empty answer prompt. Trim messages if needed.
-        """
-        if self.conv_history >= 0:
-            keep_messages = self.conv_history * len(self.conv.roles)
-            num_messages = len(self.conv.messages)
-            if num_messages > keep_messages:
-                self.conv.messages = self.conv.messages[num_messages - keep_messages:]
-        self.conv.append_message(self.conv.roles[0], question)
-        self.conv.append_message(self.conv.roles[1], None)
+        self.conv.chat_memory.add_user_message(question)
+
+    def append_answer(self, answer: str):
+        last_message = self.last_message
+        if isinstance(last_message, AIMessage) and not last_message.content:
+            last_message.content = answer
+        else:
+            self.conv.chat_memory.add_ai_message(answer)
 
     def search_context(self, question: str, top_k: int = 3, **kwargs) -> List[Document]:
         """
@@ -130,18 +139,53 @@ class QASession:
         """
         self.contexts = contexts
 
-    def get_history(self, separator: str = "\n", next_question: Optional[str] = None) -> str:
+    @property
+    def roles(self) -> Tuple[str, str]:
+        return [self.conv.human_prefix, self.conv.ai_prefix]
+
+    @property
+    def has_history(self) -> bool:
+        return len(self.conv.buffer) > 0
+
+    @property
+    def last_message(self) -> Optional[BaseMessage]:
+        if self.has_history:
+            return self.conv.buffer[-1]
+        return None
+
+    def get_history(
+        self, separator: str = "\n", range_start: Optional[int] = None, range_end: Optional[int] = None
+    ) -> str:
         """
         Get conversation history
         """
-        messages = [f'{role}: {"" if message is None else message}' for role, message in self.conv.messages]
-        if next_question:
-            messages.append(f"{self.conv.roles[0]}: {next_question}")
-        return separator.join(messages)
+        history = []
+        if not range_start:
+            if self.conv_history <= 0:
+                return ""
+
+            range_start = -2 * self.conv_history
+            if len(self.conv.buffer) > -range_start:
+                first_message = self.conv.buffer[range_start]
+                if isinstance(first_message, AIMessage):
+                    range_start -= 1
+
+        if range_end:
+            messages = self.conv.buffer[range_start:range_end]
+        else:
+            messages = messages = self.conv.buffer[range_start:]
+
+        for message in messages:
+            if isinstance(message, HumanMessage):
+                role = self.conv.human_prefix
+            else:
+                role = self.conv.ai_prefix
+            history.append(f"{role}: {message.content}")
+
+        return separator.join(history)
 
     def clear(self, keep_results: bool = False):
-        self.conv.messages = []
-        self.conv.system = ""
+        self.conv.clear()
         if not keep_results:
             self.results = []
             self.contexts = []

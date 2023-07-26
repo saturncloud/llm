@@ -211,7 +211,7 @@ class LogitsProcessorArgs:
     top_p: float = 1.0
     top_k: int = -1
     repetition_penalty: float = 1.0
-    additional: List[LogitsProcessor, LogitsWarper] = field(default_factory=list)
+    processors: List[LogitsProcessor, LogitsWarper] = field(default_factory=list)
 
     def load(self) -> LogitsProcessorList:
         processors = []
@@ -223,8 +223,8 @@ class LogitsProcessorArgs:
             processors.append(TopKLogitsWarper(self.top_k))
         if self.repetition_penalty != 1.0:
             processors.append(RepetitionPenaltyLogitsProcessor(self.repetition_penalty))
-        if self.additional:
-            processors.extend(self.additional)
+        if self.processors:
+            processors.extend(self.processors)
         return LogitsProcessorList(processors)
 
 

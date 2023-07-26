@@ -7,3 +7,8 @@ conda-update:
 .PHONY: streamlit-qa
 streamlit-qa:
 	streamlit run llm/qa/streamlit/app.py
+
+
+.PHONY: chat-qa
+chat-qa:
+	python llm/qa/cli/main.py chat --rephrase

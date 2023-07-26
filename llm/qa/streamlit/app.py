@@ -126,7 +126,7 @@ if qa_session.results:
 if not clear_convo:
     if query_submitted:
         # Stream response from LLM, updating chat window at each step
-        history = qa_session.get_history(separator=MARKDOWN_LINEBREAK) + MARKDOWN_LINEBREAK
+        history = qa_session.get_history(separator=MARKDOWN_LINEBREAK, range_start=0) + MARKDOWN_LINEBREAK
         for text in qa_session.stream_answer(question, with_prefix=True):
             message = history + text
             output.write(message)

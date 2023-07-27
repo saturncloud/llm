@@ -25,12 +25,7 @@ def get_inference_engine(num_workers: Optional[int] = None) -> InferenceEngine:
     # MultiprocessEngine ensures sessions gets dedicated access to a model
     # while their request is being processed. By default, one inference engine will
     # be loaded to each available GPU device.
-    return MultiprocessEngine(_load_engine, num_workers=num_workers)
-
-
-def _load_engine(local_rank: int) -> TransformersEngine:
-    # Loads model to the device specified by rank, and initialized the inference engine
-    return TransformersEngine.from_model_config(model_config, device=local_rank)
+    return MultiprocessEngine.from_model_config(model_config, num_workers=num_workers)
 
 
 @st.cache_resource

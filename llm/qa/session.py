@@ -7,7 +7,7 @@ from langchain.schema import Document
 from langchain.vectorstores.base import VectorStore
 from langchain.schema.messages import AIMessage, BaseMessage, HumanMessage
 
-from llm.qa.inference import TransformersEngine, InferenceEngine
+from llm.qa.inference import LogitsProcessorConfig, TransformersEngine, InferenceEngine
 from llm.qa.model_configs import ChatModelConfig
 from llm.qa.prompts import STANDALONE_QUESTION, ZERO_SHOT, ContextPrompt
 
@@ -33,6 +33,7 @@ class QASession:
         self.debug = debug
         self.results: List[Document] = []
         self.contexts: List[str] = []
+        self.logits_config = LogitsProcessorConfig(temperature=0.7, top_p=0.9)
 
     @classmethod
     def from_model_config(
@@ -67,8 +68,7 @@ class QASession:
 
         gen_kwargs = {
             "stop_str": [f"{self.conv.human_prefix}:", f"{self.prompt.default_context_label}:"],
-            "temperature": 0.9,
-            "top_p": 0.9,
+            "logits_config": self.logits_config,
             **kwargs,
         }
         prefix = ""
@@ -107,8 +107,7 @@ class QASession:
         )
         params = {
             "stop_str": f"{self.conv.human_prefix}:",
-            "temperature": 0.7,
-            "top_p": 0.9,
+            "logits_config": self.logits_config,
             **kwargs,
         }
         standalone = self.engine.get_answer(input_text, **params).strip()

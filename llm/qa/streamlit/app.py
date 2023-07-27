@@ -15,8 +15,7 @@ from llm.utils.dataset import load_data
 QA_DATASET_PATH = os.environ["QA_DATASET_PATH"]
 QA_INDEX_PATH = os.getenv("QA_INDEX_PATH")
 QA_CONTEXT_MODEL = os.getenv("QA_CONTEXT_MODEL", DEFAULT_MODEL)
-# model_config = model_configs.VICUNA_7B
-model_config = model_configs.MEDCUNA_7B
+model_config = model_configs.VICUNA_7B
 
 MARKDOWN_LINEBREAK = "  \n"
 

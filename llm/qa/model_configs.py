@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple, Type, Union
@@ -7,6 +8,7 @@ import torch
 from langchain.memory.buffer_window import ConversationBufferWindowMemory
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
 
+from llm import settings
 from llm.qa import prompts
 
 
@@ -126,7 +128,7 @@ MEDCUNA_7B = ChatModelConfig(
         "use_fast": False
     },
     default_prompt=prompts.ZERO_SHOT,
-    peft_adapter="/home/jovyan/workspace/models/medcuna-7b",
+    peft_adapter=os.path.join(settings.LOCAL_MODELS_DIR, "/medcuna-7b"),
 )
 
 LLAMA2_7B = ChatModelConfig(

@@ -60,7 +60,7 @@ class ModelConfig:
         model_cls = self.model_cls or AutoModelForCausalLM
         tokenizer_cls = self.tokenizer_cls or AutoTokenizer
         model_kwargs = {**self.model_kwargs}
-        if device:
+        if device is not None:
             model_kwargs["device_map"] = {"": device}
         model = model_cls.from_pretrained(self.name, **model_kwargs)
         tokenizer = tokenizer_cls.from_pretrained(self.name, **self.tokenizer_kwargs)

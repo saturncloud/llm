@@ -146,9 +146,8 @@ class TransformersEngine(InferenceEngine):
             torch.FloatTensor, Tuple[Tuple[torch.FloatTensor]], Optional[Tuple[torch.FloatTensor]]
         ]:
         """
-        Initial encoding of input, followed by a single decode step.
-
-        Return: logits, past_key_values, encoder_ouput
+        First pass through the model. Attention is calculated for the entire input.
+        In subsequent steps, attention is only calculated for new tokens.
         """
         input_tensor = torch.as_tensor([input_ids], device=self.model.device)
         encoder_output: Optional[torch.Tensor] = None
@@ -181,8 +180,6 @@ class TransformersEngine(InferenceEngine):
         """
         Run a single decode step on the model. Only calculate attention on the most recent token generated,
         previous token's attention is preserved through past_key_values.
-
-        Return: logits, past_key_values
         """
         input_tensor = torch.as_tensor([[last_token]], device=self.model.device)
         if self.model.config.is_encoder_decoder:
@@ -213,8 +210,6 @@ class TransformersEngine(InferenceEngine):
     ) -> int:
         """
         Process logits and determine the next token in the sequence.
-
-        Return: token
         """
         output_tensor = torch.as_tensor([output_ids], device=logits.device)
         if logits_processor:
@@ -247,7 +242,15 @@ class MultiprocessEngine(InferenceEngine):
 
     Enables thread-safe non-blocking inference across multiple devices
     """
-    def __init__(self, load_engine: Callable[[int], InferenceEngine], num_workers: Optional[int] = None):
+    def __init__(self, workers: List[WorkerPipe]):
+        self.workers = workers
+        self.closed = False
+        self.queue: Queue[WorkerPipe] = Queue(len(self.workers))
+        for worker in self.workers:
+            self.queue.put(worker)
+
+    @classmethod
+    def from_model_config(cls, model_config: ModelConfig, num_workers: Optional[int] = None, wait: bool = True) -> MultiprocessEngine:
         # Required for CUDA
         set_start_method("spawn")
 
@@ -255,19 +258,31 @@ class MultiprocessEngine(InferenceEngine):
             # TODO: Should we also check CUDA_VISIBLE_DEVICES?
             num_workers = torch.cuda.device_count()
 
-        self.closed = False
-        self.queue: Queue[WorkerPipe] = Queue(num_workers)
-        self._pipes: List[WorkerPipe] = []
+        workers: List[WorkerPipe] = []
         for i in range(num_workers):
-            pipe = WorkerPipe()
-            watch_proc = Process(None, self._watch, args=[pipe, load_engine, i], daemon=True)
+            worker = WorkerPipe()
+            watch_proc = Process(
+                None,
+                cls._transformers_worker,
+                args=[worker, model_config, i],
+                kwargs={"signal_ready": wait},
+                daemon=True,
+            )
             watch_proc.start()
-            self.queue.put(pipe)
-            self._pipes.append(pipe)
+            workers.append(worker)
+
+        if wait:
+            for worker in workers:
+                # Collect initial sentinel values indicating the workers have loaded
+                worker.get_response()
+
+        return cls(workers)
 
     @staticmethod
-    def _watch(pipe: WorkerPipe, load_engine: Callable[[int], InferenceEngine], local_rank: int):
-        engine = load_engine(local_rank)
+    def _transformers_worker(pipe: WorkerPipe, model_config: ModelConfig, local_rank: int, signal_ready: bool = False):
+        engine = TransformersEngine.from_model_config(model_config, device=local_rank)
+        if signal_ready:
+            pipe.send_response(None)
         while True:
             request = pipe.get_request()
             for text in engine.generate_stream(request.prompt, **request.kwargs):
@@ -283,26 +298,27 @@ class MultiprocessEngine(InferenceEngine):
     ) -> Iterable[str]:
         request = StreamRequest(prompt, **kwargs)
         # Wait for a worker to be available
-        pipe = self.queue.get()
-        # Send request
-        pipe.send_request(request)
-        while True:
-            # Yied results until sentinel is recieved
-            text = pipe.get_response()
-            if text is not None:
-                yield text
-            else:
-                # Stream completed
-                break
+        worker = self.queue.get()
+        try:
+            worker.send_request(request)
+            while True:
+                # Yield results until sentinel value is recieved
+                text = worker.get_response()
+                if text is not None:
+                    yield text
+                else:
+                    # Stream completed
+                    break
 
-        self.queue.task_done()
-        if not self.closed:
-            # Add pipe back to queue to process new requests
-            self.queue.put(pipe)
+            self.queue.task_done()
+        finally:
+            if not self.closed:
+                # Add pipe back to queue to process new requests
+                self.queue.put(worker)
 
     def close(self):
         self.closed = True
-        for pipe in self._pipes:
+        for pipe in self.workers:
             pipe.close()
 
 

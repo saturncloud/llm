@@ -280,7 +280,7 @@ class MultiprocessEngine(InferenceEngine):
 
     @staticmethod
     def _transformers_worker(pipe: WorkerPipe, model_config: ModelConfig, local_rank: int, signal_ready: bool = False):
-        engine = TransformersEngine.from_model_config(model_config, device=local_rank)
+        engine = TransformersEngine.from_model_config(model_config, device_map={"": local_rank})
         if signal_ready:
             pipe.send_response(None)
         while True:

@@ -1,3 +1,4 @@
+from argparse import ArgumentParser
 import os
 from typing import List, Optional
 
@@ -6,11 +7,12 @@ from langchain.vectorstores.base import VectorStore
 
 from llm.qa import model_configs
 from llm.qa.embedding import DEFAULT_MODEL, QAEmbeddings
-from llm.qa.inference import TransformersEngine, InferenceEngine, MultiprocessEngine
+from llm.qa.inference import InferenceEngine, MultiprocessEngine
+from llm.qa.model_configs import VICUNA_7B, ModelConfig
 from llm.qa.session import QASession
 from llm.qa.parser import DataFields
 from llm.qa.vector_store import DatasetVectorStore
-from llm.utils.dataset import load_data
+from llm.utils.data import load_data
 
 QA_DATASET_PATH = os.environ["QA_DATASET_PATH"]
 QA_INDEX_PATH = os.getenv("QA_INDEX_PATH")
@@ -21,7 +23,7 @@ MARKDOWN_LINEBREAK = "  \n"
 
 
 @st.cache_resource
-def get_inference_engine(num_workers: Optional[int] = None) -> InferenceEngine:
+def get_inference_engine(model_config: ModelConfig, num_workers: Optional[int] = None) -> InferenceEngine:
     # MultiprocessEngine ensures sessions gets dedicated access to a model
     # while their request is being processed. By default, one inference engine will
     # be loaded to each available GPU device.
@@ -36,7 +38,7 @@ def get_vector_store(dataset_path: str, index_path: Optional[str] = None) -> Dat
     return DatasetVectorStore(dataset, embedding, index_path=index_path)
 
 
-def get_qa_session(engine: InferenceEngine, vector_store: VectorStore) -> QASession:
+def get_qa_session(model_config: ModelConfig, engine: InferenceEngine, vector_store: VectorStore) -> QASession:
     # Conversation/contexts for each session
     if "qa_session" not in st.session_state:
         qa_session = QASession.from_model_config(
@@ -61,9 +63,15 @@ def filter_contexts():
 if __name__ == "__main__":
     st.set_page_config(page_title="QA Chat", page_icon=":robot_face:", layout="wide")
 
-    engine = get_inference_engine()
+    parser = ArgumentParser()
+    parser.add_argument("-m", "--model-id", help="Chat model ID", default=VICUNA_7B.model_id)
+    parser.add_argument("-n", "--num-workers", help="Number of chat models to run. Defaults to num GPUs.")
+    args = parser.parse_args()
+
+    model_config = ModelConfig.from_registry(args.model_id)
+    engine = get_inference_engine(model_config, num_workers=args.num_workers)
     vector_store = get_vector_store(QA_DATASET_PATH)
-    qa_session = get_qa_session(engine, vector_store)
+    qa_session = get_qa_session(model_config, engine, vector_store)
     output = st.text("")
     included: List[bool] = []
 

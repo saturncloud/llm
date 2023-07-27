@@ -6,7 +6,7 @@ from llm.qa import model_configs
 from llm.qa.embedding import DEFAULT_MODEL, QAEmbeddings
 from llm.qa.session import QASession
 from llm.qa.vector_store import DatasetVectorStore
-from llm.utils.dataset import load_data
+from llm.utils.data import load_data
 
 
 @click.command("chat", short_help="Conversational question answering from semantic search")

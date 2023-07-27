@@ -6,7 +6,7 @@ from langchain.vectorstores.base import VectorStore
 
 from llm.qa import model_configs
 from llm.qa.embedding import DEFAULT_MODEL, QAEmbeddings
-from llm.qa.inference import FastchatEngine, InferenceEngine, QueuedEngine
+from llm.qa.inference import TransformersEngine, InferenceEngine, QueuedEngine
 from llm.qa.session import QASession
 from llm.qa.parser import DataFields
 from llm.qa.vector_store import DatasetVectorStore
@@ -26,7 +26,7 @@ st.set_page_config(page_title="QA Chat", page_icon=":robot_face:", layout="wide"
 def get_inference_engine() -> InferenceEngine:
     # Load chat model and inference engine. Shared by all sessions
     model, tokenizer = model_config.load()
-    engine = FastchatEngine(model, tokenizer, max_length=model_config.max_length)
+    engine = TransformersEngine(model, tokenizer, max_length=model_config.max_length)
     # Wrap with QueuedEngine so each streamlit session has dedicated access during inference
     return QueuedEngine(engine)
 
@@ -82,7 +82,7 @@ with st.form(key="input_form", clear_on_submit=True):
         "Rephrase question with history",
         key="rephrase_question",
         value=True,
-        disabled=not (query_submitted or qa_session.conv.messages),
+        disabled=not (query_submitted or qa_session.has_history),
     )
     search_new_context = placeholder.checkbox(
         "Search new context",
@@ -97,7 +97,8 @@ with st.form(key="input_form", clear_on_submit=True):
 question = ""
 if query_submitted and not clear_convo:
     # Write user input out to streamlit, then search for contexts
-    output.write(qa_session.get_history(separator=MARKDOWN_LINEBREAK, next_question=user_input))
+    qa_session.append_question(user_input)
+    output.write(qa_session.get_history(separator=MARKDOWN_LINEBREAK))
 
     with st.spinner("Searching..."):
         if rephrase_question:
@@ -107,8 +108,6 @@ if query_submitted and not clear_convo:
         if search_new_context:
             qa_session.search_context(question)
 
-        # Append question last so question rephrasing only looks at previous messages
-        qa_session.append_question(user_input)
 
 if qa_session.results:
     # Write contexts out to streamlit, with checkboxes to filter what is sent to the LLM
@@ -127,9 +126,9 @@ if qa_session.results:
 if not clear_convo:
     if query_submitted:
         # Stream response from LLM, updating chat window at each step
-        message_string = qa_session.get_history(separator=MARKDOWN_LINEBREAK)
-        for text in qa_session.stream_answer(question):
-            message = message_string + text
+        history = qa_session.get_history(separator=MARKDOWN_LINEBREAK, range_start=0) + MARKDOWN_LINEBREAK
+        for text in qa_session.stream_answer(question, with_prefix=True):
+            message = history + text
             output.write(message)
     else:
         # Write existing message history

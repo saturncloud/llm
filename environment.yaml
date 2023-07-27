@@ -24,7 +24,6 @@ dependencies:
       - sentencepiece
       - sentence_transformers
       - langchain
-      - fschat
       - bitsandbytes
       - numpy<1.25,>=1.24
       - accelerate

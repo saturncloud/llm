@@ -4,7 +4,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple, Type
 import torch
-from fastchat.conversation import Conversation, SeparatorStyle
+from langchain.memory.buffer_window import ConversationBufferWindowMemory
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
 
 from llm.qa import prompts
@@ -17,12 +17,12 @@ default_model_kwargs = {
 }
 default_tokenizer_kwargs = {
     "use_fast": True,
+    # https://github.com/huggingface/transformers/pull/24565
+    "legacy": False,
 }
 default_conversation_kwargs = {
-    "roles": ("Question", "Answer"),
-    "sep_style": SeparatorStyle.ADD_COLON_SINGLE,
-    "sep": "\n",
-    "stop_str": "Question:",
+    "human_prefix": "Question",
+    "ai_prefix": "Answer",
 }
 
 
@@ -79,22 +79,15 @@ class ChatModelConfig(ModelConfig):
             super().__post_init__()
             self.conversation_kwargs = merge_dict(self.conversation_kwargs, default_conversation_kwargs)
 
-    def new_conversation(self) -> Conversation:
-        kwargs = {
-            "name": self.name,
-            "system": "",
-            "messages": [],
-            "offset": 0,
-            **self.conversation_kwargs,
-        }
-        return Conversation(**kwargs)
+    def new_conversation(self) -> ConversationBufferWindowMemory:
+        return ConversationBufferWindowMemory(**self.conversation_kwargs)
 
 
 VICUNA = ChatModelConfig(
     "lmsys/vicuna-7b-v1.3",
     tokenizer_kwargs={
         # Llama fast tokenizer is not good
-        "use_fast": False
+        "use_fast": False,
     },
     default_prompt=prompts.FEW_SHOT,
 )
@@ -103,7 +96,7 @@ VICUNA_33B = ChatModelConfig(
     "lmsys/vicuna-33b-v1.3",
     tokenizer_kwargs={
         # Llama fast tokenizer is not good
-        "use_fast": False
+        "use_fast": False,
     },
     default_prompt=prompts.FEW_SHOT,
 )
@@ -112,16 +105,16 @@ REDPAJAMA_INSTRUCT = ChatModelConfig(
     "togethercomputer/RedPajama-INCITE-7B-Instruct",
     default_prompt=prompts.FEW_SHOT,
     conversation_kwargs={
-        "roles": ("<human>", "<bot>"),
-        "stop_str": "<human>:",
+        "human_prefix": "<human>",
+        "ai_prefix": "<bot>",
     },
 )
 
 REDPAJAMA_CHAT = ChatModelConfig(
     "togethercomputer/RedPajama-INCITE-7B-Chat",
     conversation_kwargs={
-        "roles": ("<human>", "<bot>"),
-        "stop_str": "<human>:",
+        "human_prefix": "<human>",
+        "ai_prefix": "<bot>",
     }
 )
 

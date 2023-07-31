@@ -2,7 +2,7 @@ import os
 from typing import Optional
 import click
 
-from llm.qa import model_configs
+from llm import model_configs
 from llm.qa.embedding import DEFAULT_MODEL, QAEmbeddings
 from llm.qa.session import QASession
 from llm.qa.vector_store import DatasetVectorStore

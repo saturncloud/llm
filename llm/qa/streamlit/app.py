@@ -5,10 +5,9 @@ from typing import List, Optional
 import streamlit as st
 from langchain.vectorstores.base import VectorStore
 
-from llm.qa import model_configs
 from llm.qa.embedding import DEFAULT_MODEL, QAEmbeddings
-from llm.qa.inference import InferenceEngine, MultiprocessEngine
-from llm.qa.model_configs import VICUNA_7B, ModelConfig
+from llm.inference import InferenceEngine, MultiprocessEngine
+from llm.model_configs import VICUNA_7B, ModelConfig
 from llm.qa.session import QASession
 from llm.qa.parser import DataFields
 from llm.qa.vector_store import DatasetVectorStore

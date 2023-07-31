@@ -55,6 +55,7 @@ class ContextPrompt(Prompt):
             prompt += f"\n{context}"
         return prompt
 
+
 # Answer question with context. No examples.
 ZERO_SHOT = ContextPrompt(
     template="""

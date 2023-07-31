@@ -7,8 +7,8 @@ from langchain.schema import Document
 from langchain.vectorstores.base import VectorStore
 from langchain.schema.messages import AIMessage, BaseMessage, HumanMessage
 
-from llm.qa.inference import LogitsProcessorConfig, TransformersEngine, InferenceEngine
-from llm.qa.model_configs import ChatModelConfig
+from llm.inference import LogitsProcessorConfig, TransformersEngine, InferenceEngine
+from llm.model_configs import ChatModelConfig
 from llm.qa.prompts import STANDALONE_QUESTION, ZERO_SHOT, ContextPrompt
 
 

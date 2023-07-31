@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from copy import deepcopy
+import logging
+import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple, Type, Union
 import torch
 from langchain.memory.buffer_window import ConversationBufferWindowMemory
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
 
+from llm import settings
+from llm.utils.data import merge_dict
 from llm.qa import prompts
-
 
 default_model_kwargs = {
     "load_in_8bit": True,
@@ -25,15 +27,7 @@ default_conversation_kwargs = {
     "ai_prefix": "Answer",
 }
 
-
-def merge_dict(a: Dict, b: Dict) -> Dict:
-    new = deepcopy(b)
-    for k, v in a.items():
-        if isinstance(v, dict):
-            new[k] = merge_dict(v, new.get(k, {}))
-        else:
-            new[k] = v
-    return new
+_registry: Dict[str, ModelConfig] = {}
 
 
 @dataclass
@@ -42,12 +36,14 @@ class ModelConfig:
     Stores model and tokenizer configuration for
     pretrained huggingface models.
     """
-    name: str
+    model_id: str
     max_length: int = 512
     model_kwargs: Dict[str, Any] = field(default_factory=dict)
     tokenizer_kwargs: Dict[str, Any] = field(default_factory=dict)
     model_cls: Optional[Type[PreTrainedModel]] = None
     tokenizer_cls: Optional[Type[PreTrainedTokenizerBase]] = None
+    peft_adapter: Optional[str] = None
+    peft_kwargs: Dict[str, Any] = field(default_factory=dict)
 
     merge_defaults: bool = True
 
@@ -56,14 +52,36 @@ class ModelConfig:
             self.model_kwargs = merge_dict(self.model_kwargs, default_model_kwargs)
             self.tokenizer_kwargs = merge_dict(self.tokenizer_kwargs, default_tokenizer_kwargs)
 
-    def load(self, device: Optional[Union[int, str]] = None) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
+        _registry[self.name] = self
+
+    @classmethod
+    def from_registry(cls, name: str) -> ModelConfig:
+        if name in _registry:
+            return _registry[name]
+        logging.warn(f'ModelConfig "{name}" not found in registry. Using generic configuration.')
+        return cls(name)
+
+    @property
+    def name(self):
+        if self.peft_adapter:
+            return self.peft_adapter
+        return self.model_id
+
+    def load(self, device_map: Optional[Union[str, Dict]] = None) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
         model_cls = self.model_cls or AutoModelForCausalLM
         tokenizer_cls = self.tokenizer_cls or AutoTokenizer
-        model_kwargs = {**self.model_kwargs}
-        if device is not None:
-            model_kwargs["device_map"] = {"": device}
-        model = model_cls.from_pretrained(self.name, **model_kwargs)
-        tokenizer = tokenizer_cls.from_pretrained(self.name, **self.tokenizer_kwargs)
+        if device_map is not None:
+            model_kwargs = {
+                **self.model_kwargs,
+                "device_map": device_map,
+            }
+        else:
+            model_kwargs = self.model_kwargs
+        model = model_cls.from_pretrained(self.model_id, **model_kwargs)
+        if self.peft_adapter:
+            from peft import PeftModel
+            model = PeftModel.from_pretrained(model, self.peft_adapter, **self.peft_kwargs)
+        tokenizer = tokenizer_cls.from_pretrained(self.model_id, **self.tokenizer_kwargs)
         return model, tokenizer
 
 
@@ -86,7 +104,7 @@ class ChatModelConfig(ModelConfig):
         return ConversationBufferWindowMemory(**self.conversation_kwargs)
 
 
-VICUNA = ChatModelConfig(
+VICUNA_7B = ChatModelConfig(
     "lmsys/vicuna-7b-v1.3",
     tokenizer_kwargs={
         # Llama fast tokenizer is not good
@@ -95,13 +113,48 @@ VICUNA = ChatModelConfig(
     default_prompt=prompts.FEW_SHOT,
 )
 
+VICUNA_13B = ChatModelConfig(
+    "lmsys/vicuna-13b-v1.3",
+    tokenizer_kwargs={
+        "use_fast": False
+    },
+    default_prompt=prompts.FEW_SHOT,
+)
+
 VICUNA_33B = ChatModelConfig(
     "lmsys/vicuna-33b-v1.3",
     tokenizer_kwargs={
-        # Llama fast tokenizer is not good
-        "use_fast": False,
+        "use_fast": False
     },
     default_prompt=prompts.FEW_SHOT,
+)
+
+MEDCUNA_7B = ChatModelConfig(
+    "lmsys/vicuna-7b-v1.3",
+    tokenizer_kwargs={
+        "use_fast": False
+    },
+    default_prompt=prompts.ZERO_SHOT,
+    peft_adapter=os.path.join(settings.LOCAL_MODELS_DIR, "medcuna-7b"),
+)
+
+MEDCUNA_13B = ChatModelConfig(
+    "lmsys/vicuna-13b-v1.3",
+    tokenizer_kwargs={
+        "use_fast": False
+    },
+    default_prompt=prompts.ZERO_SHOT,
+    peft_adapter=os.path.join(settings.LOCAL_MODELS_DIR, "medcuna-13b"),
+)
+
+LLAMA2_7B = ChatModelConfig(
+    "meta-llama/Llama-2-7b-chat-hf",
+    max_length=4096,
+    default_prompt=prompts.FEW_SHOT,
+    conversation_kwargs={
+        "roles": ("user", "assistant"),
+        "stop_str": "user",
+    }
 )
 
 REDPAJAMA_INSTRUCT = ChatModelConfig(

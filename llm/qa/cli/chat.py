@@ -6,7 +6,7 @@ from llm.qa import model_configs
 from llm.qa.embedding import DEFAULT_MODEL, QAEmbeddings
 from llm.qa.session import QASession
 from llm.qa.vector_store import DatasetVectorStore
-from llm.utils.dataset import load_data
+from llm.utils.data import load_data
 
 
 @click.command("chat", short_help="Conversational question answering from semantic search")
@@ -22,7 +22,7 @@ def chat_cli(input_path: str, input_type: Optional[str], index_path: Optional[st
         if os.path.isfile(_index_path):
             index_path = _index_path
 
-    model_config = model_configs.VICUNA
+    model_config = model_configs.VICUNA_7B
     vector_store = DatasetVectorStore(dataset, QAEmbeddings(context_model), index_path=index_path)
     qa_session = QASession.from_model_config(model_config, vector_store)
 

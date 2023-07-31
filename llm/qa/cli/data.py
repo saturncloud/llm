@@ -10,7 +10,7 @@ from llm.qa.crawler import DocSpider
 from llm.qa.embedding import DEFAULT_MODEL, QAEmbeddings
 from llm.qa.parser import DatasetParser, DataFields
 from llm.utils.cli import click_coroutine
-from llm.utils.dataset import load_data, save_data
+from llm.utils.data import load_data, save_data
 
 
 @click.group(name="data", short_help="Commands for parsing datasets to be used in semantic search")

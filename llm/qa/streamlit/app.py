@@ -17,7 +17,7 @@ from llm.utils.data import load_data
 QA_DATASET_PATH = os.environ["QA_DATASET_PATH"]
 QA_INDEX_PATH = os.getenv("QA_INDEX_PATH")
 QA_CONTEXT_MODEL = os.getenv("QA_CONTEXT_MODEL", DEFAULT_MODEL)
-model_config = model_configs.VICUNA_7B
+QA_CHAT_MODEL = os.getenv("QA_CHAT_MODEL", VICUNA_7B.model_id)
 
 MARKDOWN_LINEBREAK = "  \n"
 
@@ -64,7 +64,7 @@ if __name__ == "__main__":
     st.set_page_config(page_title="QA Chat", page_icon=":robot_face:", layout="wide")
 
     parser = ArgumentParser()
-    parser.add_argument("-m", "--model-id", help="Chat model ID", default=VICUNA_7B.model_id)
+    parser.add_argument("-m", "--model-id", help="Chat model ID", default=QA_CHAT_MODEL)
     parser.add_argument("-n", "--num-workers", help="Number of chat models to run. Defaults to num GPUs.")
     args = parser.parse_args()
 

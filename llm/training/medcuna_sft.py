@@ -1,5 +1,5 @@
 """
-Train Vicuna on PubmedQA dataset
+Fine-tune Vicuna on PubmedQA dataset
 """
 
 import os
@@ -75,6 +75,7 @@ def load_base_model(lora_config: LoraConfig, gradient_checkpointing: bool = True
         model.is_parallelizable = True
         model.model_parallel = True
 
+    # Load LoRa adapter
     model = get_peft_model(model, lora_config)
     model.config.use_cache=False
 

@@ -52,10 +52,16 @@ class ModelConfig:
             self.model_kwargs = merge_dict(self.model_kwargs, default_model_kwargs)
             self.tokenizer_kwargs = merge_dict(self.tokenizer_kwargs, default_tokenizer_kwargs)
 
+        self.model_id = trim_model_path(self.model_id)
+        if self.peft_adapter:
+            self.peft_adapter = trim_model_path(self.peft_adapter)
+
         _registry[self.name] = self
 
     @classmethod
     def from_registry(cls, name: str) -> ModelConfig:
+        if name not in _registry:
+            name = trim_model_path(name)
         if name in _registry:
             return _registry[name]
         logging.warn(f'ModelConfig "{name}" not found in registry. Using generic configuration.')
@@ -102,6 +108,15 @@ class ChatModelConfig(ModelConfig):
 
     def new_conversation(self) -> ConversationBufferWindowMemory:
         return ConversationBufferWindowMemory(**self.conversation_kwargs)
+
+
+def trim_model_path(model_id: str) -> str:
+    """
+    Strip trailing / from path-based model IDs for consistency.
+    """
+    if os.path.isdir(model_id) and model_id.endswith("/"):
+        return model_id.rstrip("/")
+    return model_id
 
 
 VICUNA_7B = ChatModelConfig(

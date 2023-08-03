@@ -7,7 +7,7 @@ from langchain.schema import Document
 from langchain.vectorstores.base import VectorStore
 from langchain.schema.messages import AIMessage, BaseMessage, HumanMessage
 
-from llm.inference import LogitsProcessorConfig, TransformersEngine, InferenceEngine
+from llm.inference import TransformersEngine, InferenceEngine
 from llm.model_configs import ChatModelConfig
 from llm.qa.prompts import STANDALONE_QUESTION, ZERO_SHOT, ContextPrompt
 
@@ -22,18 +22,17 @@ class QASession:
         self,
         engine: InferenceEngine,
         vector_store: VectorStore,
-        conv: ConversationBufferWindowMemory,
+        conv: Optional[ConversationBufferWindowMemory] = None,
         prompt: ContextPrompt = ZERO_SHOT,
         debug: bool = False,
     ):
         self.engine = engine
         self.vector_store = vector_store
-        self.conv = conv
+        self.conv = conv or ConversationBufferWindowMemory(human_prefix="Question", ai_prefix="Answer")
         self.prompt = prompt
         self.debug = debug
         self.results: List[Document] = []
         self.contexts: List[str] = []
-        self.logits_config = LogitsProcessorConfig(temperature=0.7, top_p=0.9)
 
     @classmethod
     def from_model_config(
@@ -67,8 +66,9 @@ class QASession:
         input_text = self.prompt.render(question=question, contexts=self.contexts, **prompt_kwargs)
 
         gen_kwargs = {
-            "stop_str": [f"{self.conv.human_prefix}:", f"{self.prompt.default_context_label}:"],
-            "logits_config": self.logits_config,
+            "stop": [f"{self.conv.human_prefix}:", f"{self.prompt.default_context_label}:"],
+            "temperature": 0.7,
+            "top_p": 0.9,
             **kwargs,
         }
         prefix = ""
@@ -106,11 +106,12 @@ class QASession:
             conversation=history, roles=self.roles, question=question
         )
         params = {
-            "stop_str": f"{self.conv.human_prefix}:",
-            "logits_config": self.logits_config,
+            "stop": f"{self.conv.human_prefix}:",
+            "temperature": 0.7,
+            "top_p": 0.9,
             **kwargs,
         }
-        standalone = self.engine.get_answer(input_text, **params).strip()
+        standalone = self.engine.generate(input_text, **params).strip()
         if self.debug:
             print(f"\n** Standalone Input **\n{input_text}")
             print(f"\n** Standalone Question **\n{standalone}")

@@ -6,7 +6,7 @@ conda-update:
 
 
 .PHONY: chat-cmdline
-chat-qa:
+chat-cmdline:
 	python llm/qa/cli/main.py chat cmdline --rephrase
 
 

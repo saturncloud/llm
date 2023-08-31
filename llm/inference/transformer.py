@@ -5,7 +5,7 @@ import gc
 from typing import Iterable, List, Optional, Tuple, Union
 
 import torch
-from transformers import PreTrainedModel, PreTrainedTokenizerBase, LogitsProcessorList, LogitsProcessor, LogitsWarper, RepetitionPenaltyLogitsProcessor, TemperatureLogitsWarper, TopPLogitsWarper, TopKLogitsWarper
+from transformers import PreTrainedModel, PreTrainedTokenizerBase, LogitsProcessorList, RepetitionPenaltyLogitsProcessor, TemperatureLogitsWarper, TopPLogitsWarper, TopKLogitsWarper
 
 from llm.inference.base import InferenceEngine
 from llm.model_configs import ModelConfig

@@ -16,7 +16,7 @@ class InferenceEngine(ABC):
         """
         raise NotImplementedError()
 
-    def get_answer(self, prompt: str, **kwargs) -> str:
+    def generate(self, prompt: str, **kwargs) -> str:
         answer = ""
         for _answer in self.generate_stream(prompt, **kwargs):
             answer = _answer

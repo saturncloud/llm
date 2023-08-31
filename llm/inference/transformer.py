@@ -38,16 +38,12 @@ class TransformersEngine(InferenceEngine):
         stream_interval: int = 2,
         echo_prompt: bool = False,
         stop_token_ids: Optional[List[int]] = None,
-        stop_str: Union[str, List[str]] = "",
-        logits_config: Optional[LogitsProcessorConfig] = None,
-        **kwargs,
+        stop: Union[str, List[str]] = "",
+        **logit_kwargs,
     ) -> Iterable[str]:
-        logits_processor: Optional[LogitsProcessorList] = None
-        if logits_config:
-            logits_processor = logits_config.load()
-            do_sampling = True if logits_config.do_sampling else False
-        else:
-            do_sampling = True
+        logits_config = LogitsProcessorConfig(**logit_kwargs)
+        logits_processor = logits_config.load()
+        do_sampling = True if logits_config.do_sampling else False
 
         if not stop_token_ids:
             if self.tokenizer.eos_token_id is not None:
@@ -106,7 +102,7 @@ class TransformersEngine(InferenceEngine):
                 )
 
                 # Check string stopping conditions
-                stop_pos, partially_stopped = check_stop_str(output, stop_str, rfind_start)
+                stop_pos, partially_stopped = check_stop_str(output, stop, rfind_start)
                 if stop_pos != -1:
                     output = output[:stop_pos]
                     stopped = True
@@ -213,10 +209,10 @@ class TransformersEngine(InferenceEngine):
             token = int(torch.argmax(last_token_logits))
         return token
 
-    def get_answer(self, prompt: str, **kwargs) -> str:
+    def generate(self, prompt: str, **kwargs) -> str:
         # Avoid decoding tokens until the final step
         kwargs.setdefault("stream_interval", -1)
-        return super().get_answer(prompt, **kwargs)
+        return super().generate(prompt, **kwargs)
 
 
 @dataclass
@@ -226,7 +222,7 @@ class LogitsProcessorConfig:
     top_k: int = -1
     repetition_penalty: float = 1.0
     do_sampling: Optional[bool] = None
-    additional: List[Union[LogitsProcessor, LogitsWarper]] = field(default_factory=list)
+    logit_processors: Optional[LogitsProcessorList] = None
 
     def __post_init__(self):
         if self.do_sampling is None:
@@ -245,13 +241,13 @@ class LogitsProcessorConfig:
             processors.append(TopKLogitsWarper(self.top_k))
         if self.repetition_penalty != 1.0:
             processors.append(RepetitionPenaltyLogitsProcessor(self.repetition_penalty))
-        if self.additional:
-            processors.extend(self.additional)
+        if self.logit_processors:
+            processors.extend(self.logit_processors)
         return LogitsProcessorList(processors)
 
 
 def check_stop_str(
-    output: str, stop_strings: Union[str, List[str]], rfind_start: int = 0
+    output: str, stop: Union[str, List[str]], rfind_start: int = 0
 ) -> Tuple[int, bool]:
     """
     Check for string based stopping conditions on the output
@@ -259,14 +255,14 @@ def check_stop_str(
     Return lowest index of any stop strings found, and a bool indicating if a partial stop_str
     was found at the end of the output.
     """
-    if not stop_strings:
+    if not stop:
         return -1, False
-    if isinstance(stop_strings, str):
-        stop_strings = [stop_strings]
+    if isinstance(stop, str):
+        stop = [stop]
 
     partial_stop = False
     stop_pos = -1
-    for stop_str in stop_strings:
+    for stop_str in stop:
         pos = output.rfind(stop_str, rfind_start)
         if pos != -1:
             output = output[:pos]

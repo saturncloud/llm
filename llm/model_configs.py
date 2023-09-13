@@ -144,24 +144,6 @@ VICUNA_33B = ChatModelConfig(
     default_prompt=prompts.FEW_SHOT,
 )
 
-MEDCUNA_7B = ChatModelConfig(
-    "lmsys/vicuna-7b-v1.3",
-    tokenizer_kwargs={
-        "use_fast": False
-    },
-    default_prompt=prompts.ZERO_SHOT,
-    peft_adapter=os.path.join(settings.LOCAL_MODELS_DIR, "medcuna-7b"),
-)
-
-MEDCUNA_13B = ChatModelConfig(
-    "lmsys/vicuna-13b-v1.3",
-    tokenizer_kwargs={
-        "use_fast": False
-    },
-    default_prompt=prompts.ZERO_SHOT,
-    peft_adapter=os.path.join(settings.LOCAL_MODELS_DIR, "medcuna-13b"),
-)
-
 LLAMA2_7B = ChatModelConfig(
     "meta-llama/Llama-2-7b-chat-hf",
     max_length=4096,

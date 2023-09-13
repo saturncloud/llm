@@ -2,12 +2,11 @@ from argparse import ArgumentParser
 import os
 from typing import Dict, Optional
 from urllib.parse import urlparse
-import click
 
 import streamlit as st
 from langchain.vectorstores.base import VectorStore
 
-from llm.inference import InferenceEngine, MultiprocessEngine, VLLMClient
+from llm.inference import InferenceEngine, MultiprocessEngine
 from llm.model_configs import VICUNA_7B, ModelConfig
 from llm.qa.embedding import DEFAULT_MODEL, QAEmbeddings
 from llm.qa.session import QASession

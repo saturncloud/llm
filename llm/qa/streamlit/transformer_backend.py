@@ -1,25 +1,11 @@
 from argparse import ArgumentParser
-import os
-from typing import Dict, Optional
-from urllib.parse import urlparse
+from typing import Optional
 
 import streamlit as st
-from langchain.vectorstores.base import VectorStore
 
 from llm.inference import InferenceEngine, MultiprocessEngine
-from llm.model_configs import VICUNA_7B, ModelConfig
-from llm.qa.embedding import DEFAULT_MODEL, QAEmbeddings
-from llm.qa.session import QASession
-from llm.qa.streamlit.app import render_app
-from llm.qa.vector_store import DatasetVectorStore
-from llm.utils.data import load_data
-
-QA_DATASET_PATH = os.environ["QA_DATASET_PATH"]
-QA_INDEX_PATH = os.getenv("QA_INDEX_PATH")
-QA_CONTEXT_MODEL = os.getenv("QA_CONTEXT_MODEL", DEFAULT_MODEL)
-QA_CHAT_MODEL = os.getenv("QA_CHAT_MODEL", VICUNA_7B.model_id)
-
-MARKDOWN_LINEBREAK = "  \n"
+from llm.model_configs import ModelConfig
+from llm.qa.streamlit.app import QA_CHAT_MODEL, get_qa_session, get_vector_store, render_app
 
 
 @st.cache_resource
@@ -28,25 +14,6 @@ def get_inference_engine(model_config: ModelConfig, num_workers: Optional[int] =
     # while their request is being processed. By default, one inference engine will
     # be loaded to each available GPU device.
     return MultiprocessEngine.from_model_config(model_config, num_workers=num_workers)
-
-
-@st.cache_resource
-def get_vector_store(dataset_path: str, index_path: Optional[str] = None) -> DatasetVectorStore:
-    # VectorStore for semantic search. Shared by all sessions
-    dataset = load_data(dataset_path)
-    embedding = QAEmbeddings(QA_CONTEXT_MODEL)
-    return DatasetVectorStore(dataset, embedding, index_path=index_path)
-
-
-def get_qa_session(model_config: ModelConfig, engine: InferenceEngine, vector_store: VectorStore, **kwargs) -> QASession:
-    # Conversation/contexts for each session
-    if "qa_session" not in st.session_state:
-        qa_session = QASession.from_model_config(
-            model_config, vector_store, engine=engine, **kwargs
-        )
-        st.session_state["qa_session"] = qa_session
-        return qa_session
-    return st.session_state["qa_session"]
 
 
 # Ensure only the main proc interacts with streamlit
@@ -61,7 +28,7 @@ if __name__ == "__main__":
     model_config = ModelConfig.from_registry(args.model_id)
     engine = get_inference_engine(model_config, num_workers=args.num_workers)
 
-    vector_store = get_vector_store(QA_DATASET_PATH)
+    vector_store = get_vector_store()
     qa_session = get_qa_session(engine, vector_store, model_config=model_config)
 
     render_app(qa_session)

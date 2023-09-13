@@ -17,15 +17,15 @@ def chat_cli():
 
 
 @chat_cli.command("cmdline", short_help="Conversational question answering from semantic search")
-@click.argument("input-path", required=True, envvar="QA_DATASET_PATH")
-@click.option("--input-type", help="Input file type. Defaults to file extension.", default=None, envvar="QA_INPUT_TYPE")
+@click.argument("dataset-path", required=True, envvar="QA_DATASET_PATH")
+@click.option("--dataset-type", help="Input file type. Defaults to file extension.", default=None, envvar="QA_INPUT_TYPE")
 @click.option("--index-path", help="Path to a pre-built FAISS index over the dataset", default=None, envvar="QA_INDEX_PATH")
 @click.option("--context-model", help="Model name or path for context embedding", default=DEFAULT_MODEL, envvar="QA_CONTEXT_MODEL")
 @click.option("--rephrase", is_flag=True, help="Rephrase the question with context from previous messages")
-def cmdline_cli(input_path: str, input_type: Optional[str], index_path: Optional[str], context_model: str, rephrase: bool):
-    dataset = load_data(input_path, input_type)
+def cmdline_cli(dataset_path: str, dataset_type: Optional[str], index_path: Optional[str], context_model: str, rephrase: bool):
+    dataset = load_data(dataset_path, dataset_type)
     if index_path is None:
-        _index_path = input_path.rsplit(".", 1)[-1] + ".faiss"
+        _index_path = dataset_path.rsplit(".", 1)[-1] + ".faiss"
         if os.path.isfile(_index_path):
             index_path = _index_path
 
@@ -60,7 +60,17 @@ def streamlit_cli(ctx):
 @streamlit_cli.command("transfomers", short_help="Local transformers engine")
 @click.option("--model-id", help="Chat model ID.", default=model_configs.VICUNA_7B.model_id, envvar="QA_CHAT_MODEL")
 @click.option("--num-workers", type=int, default=None, help="Number of chat models to run. Defaults to num GPUs")
-def transformers_backend(model_id: str, num_workers: Optional[int]) -> QASession:
+@click.option("--dataset", required=True, help="Path to dataset with contexts", envvar="QA_DATASET_PATH")
+@click.option(
+    "--index-path",
+    help="Path to a pre-built FAISS index over the dataset. Searches for file named <dataset>.faiss by default.",
+    default=None,
+    envvar="QA_INDEX_PATH",
+)
+def transformers_backend(model_id: str, num_workers: Optional[int], dataset: str, index_path: Optional[str]) -> QASession:
+    os.environ["QA_DATASET_PATH"] = dataset
+    if index_path:
+        os.environ["QA_INDEX_PATH"] = index_path
     args = ["--model-id", model_id]
     if num_workers is not None:
         args.extend(["--num-workers", num_workers])
@@ -69,8 +79,19 @@ def transformers_backend(model_id: str, num_workers: Optional[int]) -> QASession
 
 @streamlit_cli.command("vllm-client", short_help="Remote vLLM engine")
 @click.argument("url")
-def vllm_client_backend(url: str) -> QASession:
-    run_streamlit("vllm_client_backend", url)
+@click.option("--model-id", help="Chat model ID for prompt formatting.", default=model_configs.VICUNA_7B.model_id, envvar="QA_CHAT_MODEL")
+@click.option("--dataset", required=True, help="Path to dataset with contexts", envvar="QA_DATASET_PATH")
+@click.option(
+    "--index-path",
+    help="Path to a pre-built FAISS index over the dataset. Searches for file named <dataset>.faiss by default.",
+    default=None,
+    envvar="QA_INDEX_PATH",
+)
+def vllm_client_backend(url: str, model_id: str, dataset: str, index_path: Optional[str]) -> QASession:
+    os.environ["QA_DATASET_PATH"] = dataset
+    if index_path:
+        os.environ["QA_INDEX_PATH"] = index_path
+    run_streamlit("vllm_client_backend", url, "--model-id", model_id)
 
 
 def run_streamlit(backend: str, *args: str):

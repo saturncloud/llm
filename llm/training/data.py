@@ -14,7 +14,12 @@ class LazySupervisedFineTuning(torch.utils.data.Dataset):
     Dataset for supervised fine-tuning.
     """
 
-    def __init__(self, raw_data: Dataset, tokenizer: PreTrainedTokenizerBase, process_data: Callable[[Dict[str, Any]], None]):
+    def __init__(
+        self,
+        raw_data: Dataset,
+        tokenizer: PreTrainedTokenizerBase,
+        process_data: Callable[[Dict[str, Any]], Dict[str, Any]],
+    ):
         super().__init__()
         self.raw_data = raw_data
         self.tokenizer = tokenizer

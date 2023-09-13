@@ -14,6 +14,7 @@ from peft.utils import get_peft_model_state_dict
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, DataCollatorForLanguageModeling, PreTrainedTokenizerBase, Trainer, TrainingArguments
 
 from llm import settings
+from llm.model_configs import ChatModelConfig
 from llm.training.data import LazySupervisedFineTuning, process_pubmed_qa
 
 
@@ -36,6 +37,14 @@ RESUME_FROM_CHECKPOINT = True
 WORLD_SIZE = int(os.getenv("WORLD_SIZE", 1))
 LOCAL_RANK = int(os.getenv("LOCAL_RANK", 0))
 GLOBAL_RANK = int(os.getenv("RANK", 0))
+
+MEDCUNA_7B = ChatModelConfig(
+    BASE_MODEL,
+    tokenizer_kwargs={
+        "use_fast": False
+    },
+    peft_adapter=os.path.join(settings.LOCAL_MODELS_DIR, NAME),
+)
 
 
 def has_checkpoint(dir: str) -> bool:

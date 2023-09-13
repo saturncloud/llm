@@ -7,7 +7,7 @@ import streamlit as st
 from langchain.vectorstores.base import VectorStore
 
 from llm.inference import VLLMClient
-from llm.model_configs import VICUNA_7B, ModelConfig
+from llm.model_configs import VICUNA_7B
 from llm.qa.embedding import DEFAULT_MODEL, QAEmbeddings
 from llm.qa.prompts import FEW_SHOT
 from llm.qa.session import QASession

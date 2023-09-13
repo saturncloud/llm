@@ -1,5 +1,5 @@
 from __future__ import annotations
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import gc
 
 from typing import Iterable, List, Optional, Tuple, Union

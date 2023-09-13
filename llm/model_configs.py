@@ -23,8 +23,8 @@ default_tokenizer_kwargs = {
     "legacy": False,
 }
 default_conversation_kwargs = {
-    "human_prefix": "Question",
-    "ai_prefix": "Answer",
+    "human_prefix": "Question:",
+    "ai_prefix": "Answer:",
 }
 
 _registry: Dict[str, ModelConfig] = {}
@@ -149,8 +149,8 @@ LLAMA2_7B = ChatModelConfig(
     max_length=4096,
     default_prompt=prompts.FEW_SHOT,
     conversation_kwargs={
-        "human_prefix": "user",
-        "ai_prefix": "assistant",
+        "human_prefix": "[INST]\n",
+        "ai_prefix": "\n[\INST]\n\n",
     }
 )
 

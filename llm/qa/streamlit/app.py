@@ -1,10 +1,46 @@
-from typing import List
+import os
+from typing import List, Optional
 import streamlit as st
+from langchain.vectorstores.base import VectorStore
 
+from llm.inference.base import InferenceEngine
+from llm.model_configs import VICUNA_7B, ModelConfig
+from llm.qa.embedding import DEFAULT_MODEL, QAEmbeddings
 from llm.qa.parser import DataFields
 from llm.qa.session import QASession
+from llm.qa.vector_store import DatasetVectorStore
+from llm.utils.data import load_data
+
+QA_DATASET_PATH = os.environ["QA_DATASET_PATH"]
+QA_INDEX_PATH = os.getenv("QA_INDEX_PATH")
+QA_CONTEXT_MODEL = os.getenv("QA_CONTEXT_MODEL", DEFAULT_MODEL)
+QA_CHAT_MODEL = os.getenv("QA_CHAT_MODEL", VICUNA_7B.model_id)
 
 MARKDOWN_LINEBREAK = "  \n"
+
+
+@st.cache_resource
+def get_vector_store(dataset_path: Optional[str] = None, index_path: Optional[str] = None) -> DatasetVectorStore:
+    if not dataset_path:
+        dataset_path = QA_DATASET_PATH
+    if not index_path:
+        index_path = QA_INDEX_PATH
+
+    # VectorStore for semantic search. Shared by all sessions
+    dataset = load_data(dataset_path)
+    embedding = QAEmbeddings(QA_CONTEXT_MODEL)
+    return DatasetVectorStore(dataset, embedding, index_path=index_path)
+
+
+def get_qa_session(model_config: ModelConfig, engine: InferenceEngine, vector_store: VectorStore, **kwargs) -> QASession:
+    # Conversation/contexts for each session
+    if "qa_session" not in st.session_state:
+        qa_session = QASession.from_model_config(
+            model_config, vector_store, engine=engine, **kwargs
+        )
+        st.session_state["qa_session"] = qa_session
+        return qa_session
+    return st.session_state["qa_session"]
 
 
 def render_app(qa_session: QASession):

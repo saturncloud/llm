@@ -1,26 +1,14 @@
 from argparse import ArgumentParser
 import os
-from typing import Dict, Optional
+from typing import Dict
 from urllib.parse import urlparse
 
 import streamlit as st
-from langchain.vectorstores.base import VectorStore
 
 from llm.inference import VLLMClient
-from llm.model_configs import VICUNA_7B
-from llm.qa.embedding import DEFAULT_MODEL, QAEmbeddings
+from llm.model_configs import ModelConfig
 from llm.qa.prompts import FEW_SHOT
-from llm.qa.session import QASession
-from llm.qa.streamlit.app import render_app
-from llm.qa.vector_store import DatasetVectorStore
-from llm.utils.data import load_data
-
-QA_DATASET_PATH = os.environ["QA_DATASET_PATH"]
-QA_INDEX_PATH = os.getenv("QA_INDEX_PATH")
-QA_CONTEXT_MODEL = os.getenv("QA_CONTEXT_MODEL", DEFAULT_MODEL)
-QA_CHAT_MODEL = os.getenv("QA_CHAT_MODEL", VICUNA_7B.model_id)
-
-MARKDOWN_LINEBREAK = "  \n"
+from llm.qa.streamlit.app import QA_CHAT_MODEL, get_qa_session, get_vector_store, render_app
 
 
 def get_inference_engine(url: str) -> VLLMClient:
@@ -31,31 +19,16 @@ def get_inference_engine(url: str) -> VLLMClient:
     return st.session_state["engine"]
 
 
-@st.cache_resource
-def get_vector_store(dataset_path: str, index_path: Optional[str] = None) -> DatasetVectorStore:
-    # VectorStore for semantic search. Shared by all sessions
-    dataset = load_data(dataset_path)
-    embedding = QAEmbeddings(QA_CONTEXT_MODEL)
-    return DatasetVectorStore(dataset, embedding, index_path=index_path)
-
-
-def get_qa_session(engine: VLLMClient, vector_store: VectorStore, **kwargs) -> QASession:
-    # Conversation/contexts for each session
-    if "qa_session" not in st.session_state:
-        qa_session = QASession(engine, vector_store, **kwargs)
-        st.session_state["qa_session"] = qa_session
-    return st.session_state["qa_session"]
-
-
 def headers(url: str) -> Dict[str, str]:
     # Check if we need to set Saturn auth header
     headers = {}
     SATURN_TOKEN = os.getenv("SATURN_TOKEN")
     SATURN_BASE_URL = os.getenv("SATURN_BASE_URL")
     if SATURN_TOKEN and SATURN_BASE_URL:
-        saturn_base = urlparse(SATURN_BASE_URL)
+        saturn_base = urlparse(SATURN_BASE_URL).hostname
+        saturn_base = saturn_base.split(".", 1)[-1]
         _url = urlparse(url)
-        if _url.scheme == "https" and _url.hostname and _url.hostname.endswith(saturn_base.hostname):
+        if _url.scheme == "https" and _url.hostname and _url.hostname.endswith(saturn_base):
             headers["Authorization"] = f"token {SATURN_TOKEN}"
     return headers
 
@@ -66,10 +39,14 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument("url", help="Base URL for vLLM API")
+    parser.add_argument(
+        "-m", "--model-id", help="Chat model ID for determining prompt format", default=QA_CHAT_MODEL
+    )
     args = parser.parse_args()
 
+    model_config = ModelConfig.from_registry(args.model_id)
     engine = VLLMClient(args.url, headers=headers(args.url))
-    vector_store = get_vector_store(QA_DATASET_PATH)
-    qa_session = get_qa_session(engine, vector_store, prompt=FEW_SHOT)
+    vector_store = get_vector_store()
+    qa_session = get_qa_session(model_config, engine, vector_store, prompt=FEW_SHOT)
 
     render_app(qa_session)

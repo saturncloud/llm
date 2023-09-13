@@ -149,8 +149,28 @@ LLAMA2_7B = ChatModelConfig(
     max_length=4096,
     default_prompt=prompts.FEW_SHOT,
     conversation_kwargs={
-        "roles": ("user", "assistant"),
-        "stop_str": "user",
+        "human_prefix": "user",
+        "ai_prefix": "assistant",
+    }
+)
+
+LLAMA2_7B_32K = ChatModelConfig(
+    "togethercomputer/LLaMA-2-7B-32K",
+    max_length=32768,
+    default_prompt=prompts.FEW_SHOT,
+    conversation_kwargs={
+        "human_prefix": "[INST]\n",
+        "ai_prefix": "\n[\INST]\n\n",
+    }
+)
+
+LLAMA2_7B_32K_INSTRUCT = ChatModelConfig(
+    "togethercomputer/Llama-2-7B-32K-Instruct",
+    max_length=32768,
+    default_prompt=prompts.FEW_SHOT,
+    conversation_kwargs={
+        "human_prefix": "[INST]\n",
+        "ai_prefix": "\n[\INST]\n\n",
     }
 )
 

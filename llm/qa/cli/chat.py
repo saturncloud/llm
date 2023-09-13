@@ -61,7 +61,6 @@ def streamlit_cli(ctx):
 @click.option("--model-id", help="Chat model ID.", default=model_configs.VICUNA_7B.model_id, envvar="QA_CHAT_MODEL")
 @click.option("--num-workers", type=int, default=None, help="Number of chat models to run. Defaults to num GPUs")
 def transformers_backend(model_id: str, num_workers: Optional[int]) -> QASession:
-    print(type(num_workers))
     args = ["--model-id", model_id]
     if num_workers is not None:
         args.extend(["--num-workers", num_workers])

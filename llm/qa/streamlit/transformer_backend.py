@@ -49,19 +49,6 @@ def get_qa_session(model_config: ModelConfig, engine: InferenceEngine, vector_st
     return st.session_state["qa_session"]
 
 
-def headers(url: str) -> Dict[str, str]:
-    headers = {}
-    SATURN_TOKEN = os.getenv("SATURN_TOKEN")
-    SATURN_BASE_URL = os.getenv("SATURN_BASE_URL")
-    if SATURN_TOKEN and SATURN_BASE_URL:
-        # Check if we need to set Saturn auth header
-        saturn_base = urlparse(SATURN_BASE_URL)
-        _url = urlparse(url)
-        if _url.scheme == "https" and _url.hostname and _url.hostname.endswith(saturn_base.hostname):
-            headers["Authorization"] = f"token {SATURN_TOKEN}"
-    return headers
-
-
 # Ensure only the main proc interacts with streamlit
 if __name__ == "__main__":
     st.set_page_config(page_title="QA Chat", page_icon=":robot_face:", layout="wide")

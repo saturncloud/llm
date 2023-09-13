@@ -53,9 +53,10 @@ def headers(url: str) -> Dict[str, str]:
     SATURN_TOKEN = os.getenv("SATURN_TOKEN")
     SATURN_BASE_URL = os.getenv("SATURN_BASE_URL")
     if SATURN_TOKEN and SATURN_BASE_URL:
-        saturn_base = urlparse(SATURN_BASE_URL)
+        saturn_base = urlparse(SATURN_BASE_URL).hostname
+        saturn_base = saturn_base.split(".", 1)[-1]
         _url = urlparse(url)
-        if _url.scheme == "https" and _url.hostname and _url.hostname.endswith(saturn_base.hostname):
+        if _url.scheme == "https" and _url.hostname and _url.hostname.endswith(saturn_base):
             headers["Authorization"] = f"token {SATURN_TOKEN}"
     return headers
 

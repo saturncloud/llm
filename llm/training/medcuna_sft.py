@@ -104,7 +104,7 @@ def tune():
         do_train=True,
         do_eval=True,
         bf16=True,
-        optim="adamw_torch_fused",
+        optim="adamw_torch",
         lr_scheduler_type="cosine",
         auto_find_batch_size=True,
         gradient_accumulation_steps=8,

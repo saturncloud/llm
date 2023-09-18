@@ -46,7 +46,7 @@ def process_pubmed_qa(
     Apply a ZERO_SHOT template on a PubmedQA example,
     tokenizes and formats the fields for supervised fine-tuning.
     """
-    roles = ["Question:", "Answer:"]
+    roles = ["Question: ", "Answer: "]
     context: Dict[str, Any] = qa_example["context"]
     question: str = qa_example["question"]
     answer: str = qa_example["long_answer"]

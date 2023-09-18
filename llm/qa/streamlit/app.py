@@ -36,7 +36,7 @@ def get_qa_session(model_config: ModelConfig, engine: InferenceEngine, vector_st
     # Conversation/contexts for each session
     if "qa_session" not in st.session_state:
         qa_session = QASession.from_model_config(
-            model_config, vector_store, engine=engine, human_label="Question:", ai_label="Answer:", **kwargs
+            model_config, vector_store, engine=engine, human_label="Question: ", ai_label="Answer: ", **kwargs
         )
         st.session_state["qa_session"] = qa_session
         return qa_session

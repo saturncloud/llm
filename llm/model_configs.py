@@ -23,8 +23,8 @@ default_tokenizer_kwargs = {
     "legacy": False,
 }
 default_conversation_kwargs = {
-    "human_prefix": "Question:",
-    "ai_prefix": "Answer:",
+    "human_prefix": "Question: ",
+    "ai_prefix": "Answer: ",
 }
 
 _registry: Dict[str, ModelConfig] = {}

@@ -30,7 +30,7 @@ class QASession:
     ):
         self.engine = engine
         self.vector_store = vector_store
-        self.conv = conv or ConversationBufferWindowMemory(human_prefix="Question:", ai_prefix="Answer:")
+        self.conv = conv or ConversationBufferWindowMemory(human_prefix="Question: ", ai_prefix="Answer: ")
         self.prompt = prompt
         self.human_label = human_label or self.conv.human_prefix
         self.ai_label = ai_label or self.conv.ai_prefix
@@ -190,10 +190,10 @@ class QASession:
         return separator.join(history)
 
     def format_question(self, question: str) -> str:
-        return f"{self.human_label} {question}"
+        return f"{self.human_label}{question}"
 
     def format_answer(self, answer: str) -> str:
-        return f"{self.ai_label} {answer}"
+        return f"{self.ai_label}{answer}"
 
     def clear(self, keep_results: bool = False):
         self.conv.clear()

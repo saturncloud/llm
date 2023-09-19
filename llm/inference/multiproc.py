@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from queue import Queue
 from multiprocessing import Pipe, Process, set_start_method
-from typing import Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 import torch
 
@@ -105,6 +105,17 @@ class StreamRequest:
         self.prompt = prompt
         self.kwargs = kwargs
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "prompt": self.prompt,
+            **self.kwargs,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> StreamRequest:
+        return cls(**data)
+
+
 
 class WorkerPipe:
     """
@@ -119,14 +130,15 @@ class WorkerPipe:
 
     ### Main proc methods ####
     def send_request(self, request: StreamRequest):
-        self.parent_conn.send(request)
+        # Send as dict to make pickling more reliable
+        self.parent_conn.send(request.to_dict())
 
     def get_response(self) -> Optional[str]:
         return self.parent_conn.recv()
 
     ### Worker methods ####
     def get_request(self) -> StreamRequest:
-        return self.child_conn.recv()
+        return StreamRequest.from_dict(self.child_conn.recv())
 
     def send_response(self, response: Optional[str]):
         self.child_conn.send(response)

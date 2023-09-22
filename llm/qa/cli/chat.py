@@ -36,13 +36,13 @@ def cmdline_cli(dataset_path: str, dataset_type: Optional[str], index_path: Opti
     while True:
         input_text = input("Question: ")
         qa_session.append_question(input_text)
-        question = input_text
+        search_query = input_text
         if rephrase:
-            question = qa_session.rephrase_question(question)
-        qa_session.search_context(question)
+            search_query = qa_session.rephrase_question(input_text)
+        qa_session.search_context(search_query)
 
         prev_output = ""
-        for output_text in qa_session.stream_answer(question, with_prefix=True):
+        for output_text in qa_session.stream_answer(input_text, with_prefix=True):
             new_output = output_text[len(prev_output):]
             prev_output = output_text
             print(new_output, end="", flush=True)
@@ -87,10 +87,10 @@ def transformers_backend(model_id: str, num_workers: Optional[int], dataset: str
     default=None,
     envvar="QA_INDEX_PATH",
 )
-def vllm_client_backend(url: str, model_id: str, dataset: str, index_path: Optional[str]) -> QASession:
+def vllm_client_backend(url: str, model_id: str, dataset: str, index: Optional[str]) -> QASession:
     os.environ["QA_DATASET_PATH"] = dataset
-    if index_path:
-        os.environ["QA_INDEX_PATH"] = index_path
+    if index:
+        os.environ["QA_INDEX_PATH"] = index
     run_streamlit("vllm_client_backend", url, "--model-id", model_id)
 
 

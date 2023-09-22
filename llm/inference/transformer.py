@@ -52,7 +52,12 @@ class TransformersEngine(InferenceEngine):
                 stop_token_ids = []
 
         len_prompt = len(prompt)
-        input_ids = self.tokenizer(prompt).input_ids
+        if self.tokenizer.bos_token_id is not None:
+            add_special_tokens = not prompt.startswith(self.tokenizer.bos_token)
+        else:
+            add_special_tokens = True
+
+        input_ids = self.tokenizer(prompt, add_special_tokens=add_special_tokens).input_ids
         output_ids = list(input_ids)
 
         if self.model.config.is_encoder_decoder:

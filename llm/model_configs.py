@@ -5,12 +5,10 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple, Type, Union
 import torch
-from langchain.memory.buffer_window import ConversationBufferWindowMemory
-from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, PreTrainedModel, PreTrainedTokenizerBase
 
-from llm import settings
 from llm.utils.data import merge_dict
-from llm.qa import prompts
+from llm.prompt import Llama2Format, Conversation, RedpajamaFormat, TogetherLlama2Format
 
 default_model_kwargs = {
     "load_in_8bit": True,
@@ -22,10 +20,7 @@ default_tokenizer_kwargs = {
     # https://github.com/huggingface/transformers/pull/24565
     "legacy": False,
 }
-default_conversation_kwargs = {
-    "human_prefix": "Question: ",
-    "ai_prefix": "Answer: ",
-}
+default_conversation_kwargs = {}
 
 _registry: Dict[str, ModelConfig] = {}
 
@@ -74,8 +69,10 @@ class ModelConfig:
         return self.model_id
 
     def load(self, device_map: Optional[Union[str, Dict]] = None) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
+        return self.load_model(device_map), self.load_tokenizer()
+
+    def load_model(self, device_map: Optional[Union[str, Dict]] = None) -> PreTrainedModel:
         model_cls = self.model_cls or AutoModelForCausalLM
-        tokenizer_cls = self.tokenizer_cls or AutoTokenizer
         if device_map is not None:
             model_kwargs = {
                 **self.model_kwargs,
@@ -87,8 +84,11 @@ class ModelConfig:
         if self.peft_adapter:
             from peft import PeftModel
             model = PeftModel.from_pretrained(model, self.peft_adapter, **self.peft_kwargs)
-        tokenizer = tokenizer_cls.from_pretrained(self.model_id, **self.tokenizer_kwargs)
-        return model, tokenizer
+        return model
+
+    def load_tokenizer(self) -> PreTrainedTokenizerBase:
+        tokenizer_cls = self.tokenizer_cls or AutoTokenizer
+        return tokenizer_cls.from_pretrained(self.model_id, **self.tokenizer_kwargs)
 
 
 @dataclass
@@ -99,15 +99,14 @@ class ChatModelConfig(ModelConfig):
     """
     max_length: int = 2048
     conversation_kwargs: Dict[str, Any] = field(default_factory=dict)
-    default_prompt: prompts.ContextPrompt = prompts.ZERO_SHOT
 
     def __post_init__(self):
         if self.merge_defaults:
             super().__post_init__()
             self.conversation_kwargs = merge_dict(self.conversation_kwargs, default_conversation_kwargs)
 
-    def new_conversation(self) -> ConversationBufferWindowMemory:
-        return ConversationBufferWindowMemory(**self.conversation_kwargs)
+    def new_conversation(self) -> Conversation:
+        return Conversation(**self.conversation_kwargs)
 
 
 def trim_model_path(model_id: str) -> str:
@@ -125,7 +124,6 @@ VICUNA_7B = ChatModelConfig(
         # Llama fast tokenizer is not good
         "use_fast": False,
     },
-    default_prompt=prompts.FEW_SHOT,
 )
 
 VICUNA_13B = ChatModelConfig(
@@ -133,7 +131,6 @@ VICUNA_13B = ChatModelConfig(
     tokenizer_kwargs={
         "use_fast": False
     },
-    default_prompt=prompts.FEW_SHOT,
 )
 
 VICUNA_33B = ChatModelConfig(
@@ -141,53 +138,59 @@ VICUNA_33B = ChatModelConfig(
     tokenizer_kwargs={
         "use_fast": False
     },
-    default_prompt=prompts.FEW_SHOT,
 )
 
 LLAMA2_7B = ChatModelConfig(
     "meta-llama/Llama-2-7b-chat-hf",
     max_length=4096,
-    default_prompt=prompts.FEW_SHOT,
     conversation_kwargs={
-        "human_prefix": "[INST]\n",
-        "ai_prefix": "\n[\INST]\n\n",
-    }
+        "format": Llama2Format(),
+    },
+)
+
+LLAMA2_13B = ChatModelConfig(
+    "meta-llama/Llama-2-13b-chat-hf",
+    max_length=4096,
+    model_kwargs={
+        "quantization_config": BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.float16,
+        ),
+    },
+    conversation_kwargs={
+        "format": Llama2Format(),
+    },
 )
 
 LLAMA2_7B_32K = ChatModelConfig(
     "togethercomputer/LLaMA-2-7B-32K",
     max_length=32768,
-    default_prompt=prompts.FEW_SHOT,
     conversation_kwargs={
-        "human_prefix": "[INST]\n",
-        "ai_prefix": "\n[\INST]\n\n",
-    }
+        "format": TogetherLlama2Format(),
+    },
 )
 
 LLAMA2_7B_32K_INSTRUCT = ChatModelConfig(
     "togethercomputer/Llama-2-7B-32K-Instruct",
     max_length=32768,
-    default_prompt=prompts.FEW_SHOT,
     conversation_kwargs={
-        "human_prefix": "[INST]\n",
-        "ai_prefix": "\n[\INST]\n\n",
-    }
+        "format": TogetherLlama2Format(),
+    },
 )
 
 REDPAJAMA_INSTRUCT = ChatModelConfig(
     "togethercomputer/RedPajama-INCITE-7B-Instruct",
-    default_prompt=prompts.FEW_SHOT,
     conversation_kwargs={
-        "human_prefix": "<human>",
-        "ai_prefix": "<bot>",
+        "format": RedpajamaFormat(),
     },
 )
 
 REDPAJAMA_CHAT = ChatModelConfig(
     "togethercomputer/RedPajama-INCITE-7B-Chat",
     conversation_kwargs={
-        "human_prefix": "<human>",
-        "ai_prefix": "<bot>",
+        "format": RedpajamaFormat(),
     }
 )
 
@@ -199,7 +202,6 @@ MPT_INSTRUCT = ChatModelConfig(
         "trust_remote_code": True,
         "revision": "1fc4634127ec64a45716003578b9cfae23265849",
     },
-    default_prompt=prompts.INSTRUCTION_FEW_SHOT,
 )
 
 MPT_CHAT = ChatModelConfig(
@@ -210,5 +212,4 @@ MPT_CHAT = ChatModelConfig(
         "trust_remote_code": True,
         "revision": "c53dee01e05098f81cac11145f9bf45feedc5b2f",
     },
-    default_prompt=prompts.ZERO_SHOT,
 )

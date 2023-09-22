@@ -32,11 +32,11 @@ def get_vector_store(dataset_path: Optional[str] = None, index_path: Optional[st
     return DatasetVectorStore(dataset, embedding, index_path=index_path)
 
 
-def get_qa_session(model_config: ModelConfig, engine: InferenceEngine, vector_store: VectorStore, **kwargs) -> QASession:
+def get_qa_session(model_config: ModelConfig, engine: InferenceEngine, vector_store: VectorStore, debug: bool = True, **kwargs) -> QASession:
     # Conversation/contexts for each session
     if "qa_session" not in st.session_state:
         qa_session = QASession.from_model_config(
-            model_config, vector_store, engine=engine, human_label="Question: ", ai_label="Answer: ", **kwargs
+            model_config, vector_store, engine=engine, user_label="Question: ", assistant_label="Answer: ", debug=debug, **kwargs
         )
         st.session_state["qa_session"] = qa_session
         return qa_session
@@ -76,7 +76,6 @@ def render_app(qa_session: QASession):
         if query_submitted and not user_input:
             query_submitted = False
 
-    question = ""
     if query_submitted and not clear_convo:
         # Write user input out to streamlit, then search for contexts
         qa_session.append_question(user_input)
@@ -84,11 +83,11 @@ def render_app(qa_session: QASession):
 
         with st.spinner("Searching..."):
             if rephrase_question:
-                question = qa_session.rephrase_question(user_input)
+                search_query = qa_session.rephrase_question(user_input)
             else:
-                question = user_input
+                search_query = user_input
             if search_new_context:
-                qa_session.search_context(question, top_k=num_contexts)
+                qa_session.search_context(search_query, top_k=num_contexts)
 
 
     if qa_session.results:
@@ -108,8 +107,8 @@ def render_app(qa_session: QASession):
     if not clear_convo:
         if query_submitted:
             # Stream response from LLM, updating chat window at each step
-            history = qa_session.get_history(separator=MARKDOWN_LINEBREAK, range_start=0) + MARKDOWN_LINEBREAK
-            for text in qa_session.stream_answer(question, with_prefix=True):
+            history = qa_session.get_history(separator=MARKDOWN_LINEBREAK) + MARKDOWN_LINEBREAK
+            for text in qa_session.stream_answer(user_input, with_prefix=True):
                 message = history + text
                 output.write(message)
         else:

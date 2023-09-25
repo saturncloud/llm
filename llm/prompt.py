@@ -115,22 +115,25 @@ class Prompt:
 
     def render(
         self,
-        format: PromptFormat,
         messages: List[Message],
+        format: Optional[PromptFormat] = None,
         with_system: bool = True,
         with_contexts: bool = True,
         with_examples: bool = True,
     ) -> str:
-        results: List[str] = []
         """
         Render the prompt as a conversation.
         """
+        if format is None:
+            format = PromptFormat()
+        results: List[str] = []
+
         # Format examples
         if with_examples and self.examples:
             for example in self.examples:
                 example_str = self.render(
-                    format,
                     example,
+                    format=format,
                     with_system=with_system,
                     with_contexts=with_contexts,
                     with_examples=False,
@@ -154,11 +157,10 @@ class Prompt:
         for i, message in enumerate(messages):
             last = (i == num_messages - 1)
             message_str = self.render_message(
-                format,
                 message,
-                index=i,
+                format=format,
                 last=last,
-                with_system=with_system,
+                with_system=(with_system and (i == 0)),
                 with_contexts=with_contexts,
             )
             results.append(message_str)
@@ -167,18 +169,19 @@ class Prompt:
 
     def render_message(
         self,
-        format: PromptFormat,
         message: Message,
-        index: int = 0,
+        format: Optional[PromptFormat] = None,
         last: bool = False,
         with_system: bool = True,
         with_contexts: bool = True,
     ) -> str:
+        if format is None:
+            format = PromptFormat()
         results = []
         inputs = []
 
         # Format system message
-        if with_system and index == 0:
+        if with_system:
             system_message = format.system.render(self.system_message)
             if format.system_nested:
                 # System message nested within input formatting (e.g. Llama2)
@@ -256,4 +259,4 @@ class Conversation:
         self.messages = []
 
     def render(self, prompt: Prompt) -> str:
-        return prompt.render(self.format, self.messages)
+        return prompt.render(self.messages, format=self.format)

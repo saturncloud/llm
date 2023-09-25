@@ -131,7 +131,8 @@ class QASession:
         message = Message(input=question, contexts=[
             m.input for m in messages
         ])
-        input_text = self.standalone_question_prompt.render(self.conversation.format, messages=[message])
+        # TODO: conv.render
+        input_text = self.standalone_question_prompt.render(messages=[message], format=self.conversation.format)
         if self.debug:
             print(f"\n** Standalone Input **\n{input_text}")
 

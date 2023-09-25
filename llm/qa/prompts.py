@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 
 from llm.prompt import Prompt, Message, PromptFormat
 
@@ -53,8 +53,10 @@ class StandaloneQuestion(Prompt):
     system_message: str = "Given the following conversation and a follow up question, rephrase the follow up question with any relevant context. The final answer should be a concise search query that will find results relevant to the original question."
     input_template: str = "\nQuestion: {input}"
     response_template: str = "\nAnswer: {response}"
-    final_input_template: str = "\nFollowup Question: {input}"
-    final_response_template: str = "\nRephrased Question: {response}"
+    followup_question: Prompt = field(default_factory=lambda: Prompt(
+        input_template="\nFollowup Question: {input}",
+        response_template="\nRephrased Question: {response}",
+    ))
     examples: List[List[Message]] = field(default_factory=lambda: [
         [
             Message(
@@ -82,7 +84,6 @@ class StandaloneQuestion(Prompt):
         ],
         [
             Message(
-
                 input="Which state/country's law governs the interpretation of the contract?",
                 response="This Agreement is governed by English law.",
             ),
@@ -95,19 +96,11 @@ class StandaloneQuestion(Prompt):
 
     def render_message(
         self,
-        format: PromptFormat,
         message: Message,
-        index: int = 0,
+        format: Optional[PromptFormat] = None,
         last: bool = False,
         **kwargs
     ) -> str:
-        input_template = self.input_template
-        response_template = self.response_template
         if last:
-            self.input_template = self.final_input_template
-            self.response_template = self.final_response_template
-        result = super().render_message(format, message, index, last, **kwargs)
-        if last:
-            self.input_template = input_template
-            self.response_template = response_template
-        return result
+            return self.followup_question.render_message(message, format=format, last=last, **kwargs)
+        return super().render_message(message, format=format, last=last, **kwargs)

@@ -101,7 +101,6 @@ class StandaloneQuestion(Prompt):
         last: bool = False,
         **kwargs
     ) -> str:
-        print(index, last)
         input_template = self.input_template
         response_template = self.response_template
         if last:

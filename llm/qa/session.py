@@ -112,7 +112,7 @@ class QASession:
         Rephrase question to be a standalone question based on conversation history.
 
         Enables users to implicitly refer to previous messages. Relevant information is
-        added to the question, which then gets used both for semantic search the final answer.
+        added to the question, which then gets used for semantic search of contexts.
         """
         last_message = self.last_message
         if not last_message:
@@ -121,18 +121,16 @@ class QASession:
 
         if last_message.input == question and last_message.response is None:
             # Question already added to conversation
-            messages = self.conversation.messages[:-1]
-            if len(messages) == 0:
+            messages = self.conversation.messages
+            if len(messages) == 1:
                 # No history to use for rephrasing
                 return question
         else:
-            messages = self.conversation.messages
+            messages = [*self.conversation.messages, Message(question)]
 
-        message = Message(input=question, contexts=[
-            m.input for m in messages
-        ])
-        # TODO: conv.render
-        input_text = self.standalone_question_prompt.render(messages=[message], format=self.conversation.format)
+        input_text = self.standalone_question_prompt.render(
+            messages=messages, format=self.conversation.format, with_contexts=False
+        )
         if self.debug:
             print(f"\n** Standalone Input **\n{input_text}")
 

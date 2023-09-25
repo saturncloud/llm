@@ -8,7 +8,7 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, PreTrainedModel, PreTrainedTokenizerBase
 
 from llm.utils.data import merge_dict
-from llm.prompt import Llama2Format, Conversation, RedpajamaFormat, TogetherLlama2Format
+from llm.prompt import Llama2Format, Conversation, RedpajamaFormat, TogetherLlama2Format, VicunaFormat
 
 default_model_kwargs = {
     "load_in_8bit": True,
@@ -119,25 +119,35 @@ def trim_model_path(model_id: str) -> str:
 
 
 VICUNA_7B = ChatModelConfig(
-    "lmsys/vicuna-7b-v1.3",
+    "lmsys/vicuna-7b-v1.5",
     tokenizer_kwargs={
         # Llama fast tokenizer is not good
         "use_fast": False,
     },
+    conversation_kwargs={
+        "format": VicunaFormat(),
+    }
 )
 
 VICUNA_13B = ChatModelConfig(
-    "lmsys/vicuna-13b-v1.3",
+    "lmsys/vicuna-13b-v1.5",
+    max_length=4096,
     tokenizer_kwargs={
         "use_fast": False
     },
+    conversation_kwargs={
+        "format": VicunaFormat(),
+    }
 )
 
 VICUNA_33B = ChatModelConfig(
-    "lmsys/vicuna-33b-v1.3",
+    "lmsys/vicuna-33b-v1.5",
     tokenizer_kwargs={
         "use_fast": False
     },
+    conversation_kwargs={
+        "format": VicunaFormat(),
+    }
 )
 
 LLAMA2_7B = ChatModelConfig(

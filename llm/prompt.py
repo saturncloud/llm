@@ -69,6 +69,14 @@ class RedpajamaFormat(PromptFormat):
 
 
 @dataclass
+class VicunaFormat(PromptFormat):
+    user: Role = field(default_factory=lambda: Role("USER: "))
+    assistant: Role = field(default_factory=lambda: Role("ASSISTANT: "))
+    BOS: str = "<s>"
+    EOS: str = "</s>"
+
+
+@dataclass
 class Llama2Format(PromptFormat):
     user: Role = field(default_factory=lambda: Role(prefix="[INST] ", suffix=" [/INST]"))
     system: Role = field(default_factory=lambda: Role(prefix="<<SYS>>\n", suffix="\n<</SYS>>\n\n"))

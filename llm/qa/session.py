@@ -4,9 +4,10 @@ from typing import Iterable, List, Optional, Type, Union
 
 from langchain.schema import Document
 from langchain.vectorstores.base import VectorStore
+import torch
 
 from llm.inference import TransformersEngine, InferenceEngine
-from llm.model_configs import ChatModelConfig
+from llm.model_configs import ChatModelConfig, bnb_quantization
 from llm.prompt import Message, Prompt, Conversation
 from llm.qa.prompts import FewShotQA, StandaloneQuestion
 
@@ -53,8 +54,14 @@ class QASession:
         **kwargs,
     ) -> QASession:
         if engine is None:
-            model, tokenizer = model_config.load()
-            engine = TransformersEngine(model, tokenizer, model_config.max_length)
+            engine = TransformersEngine.from_model_config(
+                model_config,
+                model_kwargs={
+                    "device_map": "auto",
+                    "torch_dtype": torch.float16,
+                    "quantization_config": bnb_quantization(),
+                },
+            )
         conv = model_config.new_conversation()
         return cls(engine, vector_store, conversation=conv, **kwargs)
 

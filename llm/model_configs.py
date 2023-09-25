@@ -5,16 +5,19 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple, Type, Union
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, PreTrainedModel, PreTrainedTokenizerBase
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+    PreTrainedModel,
+    PreTrainedTokenizerBase,
+    __version__ as TRANSFORMERS_VERSION,
+)
 
 from llm.utils.data import merge_dict
 from llm.prompt import Llama2Format, Conversation, RedpajamaFormat, TogetherLlama2Format, VicunaFormat
 
-default_model_kwargs = {
-    "load_in_8bit": True,
-    "torch_dtype": torch.float16,
-    "device_map": "auto",
-}
+default_model_kwargs = {}
 default_tokenizer_kwargs = {
     "use_fast": True,
     # https://github.com/huggingface/transformers/pull/24565
@@ -23,6 +26,23 @@ default_tokenizer_kwargs = {
 default_conversation_kwargs = {}
 
 _registry: Dict[str, ModelConfig] = {}
+
+
+def bnb_quantization() -> BitsAndBytesConfig:
+    """
+    Create a valid BitsAndBytes quantization for the version of transformers that is installed.
+    """
+    if TRANSFORMERS_VERSION >= "4.30.0":
+        # 4-bit supported after this version
+        return BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.float16,
+        )
+    return BitsAndBytesConfig(
+        load_in_8bit=True,
+    )
 
 
 @dataclass
@@ -68,27 +88,35 @@ class ModelConfig:
             return self.peft_adapter
         return self.model_id
 
-    def load(self, device_map: Optional[Union[str, Dict]] = None) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
-        return self.load_model(device_map), self.load_tokenizer()
+    def load(
+        self,
+        device_map: Optional[Union[str, Dict]] = None,
+        model_kwargs: Optional[Dict[str, Any]] = None,
+        tokenizer_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
+        model = self.load_model(device_map=device_map, **(model_kwargs or {}))
+        tokenizer = self.load_tokenizer(**(tokenizer_kwargs or {}))
+        return model, tokenizer
 
-    def load_model(self, device_map: Optional[Union[str, Dict]] = None) -> PreTrainedModel:
+    def load_model(self, **kwargs) -> PreTrainedModel:
         model_cls = self.model_cls or AutoModelForCausalLM
-        if device_map is not None:
-            model_kwargs = {
-                **self.model_kwargs,
-                "device_map": device_map,
-            }
-        else:
-            model_kwargs = self.model_kwargs
+        model_kwargs = {
+            **self.model_kwargs,
+            **kwargs,
+        }
         model = model_cls.from_pretrained(self.model_id, **model_kwargs)
         if self.peft_adapter:
             from peft import PeftModel
             model = PeftModel.from_pretrained(model, self.peft_adapter, **self.peft_kwargs)
         return model
 
-    def load_tokenizer(self) -> PreTrainedTokenizerBase:
+    def load_tokenizer(self, **kwargs) -> PreTrainedTokenizerBase:
         tokenizer_cls = self.tokenizer_cls or AutoTokenizer
-        return tokenizer_cls.from_pretrained(self.model_id, **self.tokenizer_kwargs)
+        tokenizer_kwargs = {
+            **self.tokenizer_kwargs,
+            **kwargs,
+        }
+        return tokenizer_cls.from_pretrained(self.model_id, **tokenizer_kwargs)
 
 
 @dataclass
@@ -161,14 +189,6 @@ LLAMA2_7B = ChatModelConfig(
 LLAMA2_13B = ChatModelConfig(
     "meta-llama/Llama-2-13b-chat-hf",
     max_length=4096,
-    model_kwargs={
-        "quantization_config": BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.float16,
-        ),
-    },
     conversation_kwargs={
         "format": Llama2Format(),
     },

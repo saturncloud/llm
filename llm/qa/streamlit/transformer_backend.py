@@ -2,9 +2,10 @@ from argparse import ArgumentParser
 from typing import Optional
 
 import streamlit as st
+import torch
 
 from llm.inference import InferenceEngine, MultiprocessEngine
-from llm.model_configs import ChatModelConfig, ModelConfig
+from llm.model_configs import ChatModelConfig, ModelConfig, bnb_quantization
 from llm.qa.streamlit.app import QA_CHAT_MODEL, get_qa_session, get_vector_store, render_app
 
 
@@ -13,7 +14,14 @@ def get_inference_engine(model_config: ModelConfig, num_workers: Optional[int] =
     # MultiprocessEngine ensures sessions gets dedicated access to a model
     # while their request is being processed. By default, one inference engine will
     # be loaded to each available GPU device.
-    return MultiprocessEngine.from_model_config(model_config, num_workers=num_workers)
+    return MultiprocessEngine.from_model_config(
+        model_config,
+        num_workers=num_workers,
+        model_kwargs={
+            "torch_dtype": torch.float16,
+            "quantization_config": bnb_quantization(),
+        },
+    )
 
 
 # Ensure only the main proc interacts with streamlit

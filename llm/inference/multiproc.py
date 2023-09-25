@@ -25,7 +25,7 @@ class MultiprocessEngine(InferenceEngine):
             self.queue.put(worker)
 
     @classmethod
-    def from_model_config(cls, model_config: ModelConfig, num_workers: Optional[int] = None, wait: bool = True) -> MultiprocessEngine:
+    def from_model_config(cls, model_config: ModelConfig, num_workers: Optional[int] = None, wait: bool = True, **kwargs) -> MultiprocessEngine:
         # Required for CUDA
         set_start_method("spawn")
 
@@ -40,7 +40,7 @@ class MultiprocessEngine(InferenceEngine):
                 None,
                 cls._transformers_worker,
                 args=[worker, model_config, i],
-                kwargs={"signal_ready": wait},
+                kwargs={"signal_ready": wait, **kwargs},
                 daemon=True,
             )
             watch_proc.start()
@@ -54,8 +54,8 @@ class MultiprocessEngine(InferenceEngine):
         return cls(workers)
 
     @staticmethod
-    def _transformers_worker(pipe: WorkerPipe, model_config: ModelConfig, local_rank: int, signal_ready: bool = False):
-        engine = TransformersEngine.from_model_config(model_config, device_map={"": local_rank})
+    def _transformers_worker(pipe: WorkerPipe, model_config: ModelConfig, local_rank: int, signal_ready: bool = False, **kwargs):
+        engine = TransformersEngine.from_model_config(model_config, device_map={"": local_rank}, **kwargs)
         if signal_ready:
             pipe.send_response(None)
         while True:

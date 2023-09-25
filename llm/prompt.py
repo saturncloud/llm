@@ -17,7 +17,8 @@ class Role:
 
     @property
     def stop_strings(self) -> List[str]:
-        return [s for s in (self.prefix, self.suffix) if s]
+        # Inlcude any suffix/prefix that is not all whitespace as a strop string
+        return [s for s in (self.prefix, self.suffix) if s.strip()]
 
 
 @dataclass
@@ -51,6 +52,7 @@ class PromptFormat:
             + self.assistant.stop_strings
             + self.system.stop_strings
             + self.context.stop_strings
+            + self.example.stop_strings
         )
 
 

@@ -57,20 +57,20 @@ def streamlit_cli(ctx):
         ctx.forward(transformers_backend)
 
 
-@streamlit_cli.command("transfomers", short_help="Local transformers engine")
+@streamlit_cli.command("transformers", short_help="Local transformers engine")
 @click.option("--model-id", help="Chat model ID.", default=model_configs.VICUNA_7B.model_id, envvar="QA_CHAT_MODEL")
 @click.option("--num-workers", type=int, default=None, help="Number of chat models to run. Defaults to num GPUs")
-@click.option("--dataset", required=True, help="Path to dataset with contexts", envvar="QA_DATASET_PATH")
+@click.option("--dataset", required=True, help="Path to dataset with contexts. Defaults to env QA_DATASET_PATH", envvar="QA_DATASET_PATH")
 @click.option(
-    "--index-path",
-    help="Path to a pre-built FAISS index over the dataset. Searches for file named <dataset>.faiss by default.",
+    "--index",
+    help="Path to a pre-built FAISS index over the dataset. Defaults to env QA_INDEX_PATH or <dataset-name>.faiss",
     default=None,
     envvar="QA_INDEX_PATH",
 )
-def transformers_backend(model_id: str, num_workers: Optional[int], dataset: str, index_path: Optional[str]) -> QASession:
+def transformers_backend(model_id: str, num_workers: Optional[int], dataset: str, index: Optional[str]) -> QASession:
     os.environ["QA_DATASET_PATH"] = dataset
-    if index_path:
-        os.environ["QA_INDEX_PATH"] = index_path
+    if index:
+        os.environ["QA_INDEX_PATH"] = index
     args = ["--model-id", model_id]
     if num_workers is not None:
         args.extend(["--num-workers", num_workers])
@@ -80,10 +80,10 @@ def transformers_backend(model_id: str, num_workers: Optional[int], dataset: str
 @streamlit_cli.command("vllm-client", short_help="Remote vLLM engine")
 @click.argument("url")
 @click.option("--model-id", help="Chat model ID for prompt formatting.", default=model_configs.VICUNA_7B.model_id, envvar="QA_CHAT_MODEL")
-@click.option("--dataset", required=True, help="Path to dataset with contexts", envvar="QA_DATASET_PATH")
+@click.option("--dataset", required=True, help="Path to dataset with contexts. Defaults to env QA_DATASET_PATH", envvar="QA_DATASET_PATH")
 @click.option(
-    "--index-path",
-    help="Path to a pre-built FAISS index over the dataset. Searches for file named <dataset>.faiss by default.",
+    "--index",
+    help="Path to a pre-built FAISS index over the dataset. Defaults to env QA_INDEX_PATH or <dataset-name>.faiss",
     default=None,
     envvar="QA_INDEX_PATH",
 )

@@ -36,7 +36,7 @@ def get_qa_session(model_config: ModelConfig, engine: InferenceEngine, vector_st
     # Conversation/contexts for each session
     if "qa_session" not in st.session_state:
         qa_session = QASession.from_model_config(
-            model_config, vector_store, engine=engine, **kwargs
+            model_config, vector_store, engine=engine, human_label="Question: ", ai_label="Answer: ", **kwargs
         )
         st.session_state["qa_session"] = qa_session
         return qa_session
@@ -57,6 +57,7 @@ def render_app(qa_session: QASession):
         # Collect user input
         user_input = st.text_area("You:", key="input", height=100)
         placeholder = st.container()
+        num_contexts = st.number_input(label="Num Contexts", min_value=0, value=3)
         query_submitted = st.form_submit_button(label="Query")
 
         rephrase_question = placeholder.checkbox(
@@ -87,7 +88,7 @@ def render_app(qa_session: QASession):
             else:
                 question = user_input
             if search_new_context:
-                qa_session.search_context(question)
+                qa_session.search_context(question, top_k=num_contexts)
 
 
     if qa_session.results:

@@ -46,7 +46,7 @@ def process_pubmed_qa(
     Apply a ZERO_SHOT template on a PubmedQA example,
     tokenizes and formats the fields for supervised fine-tuning.
     """
-    roles = ["Question", "Answer"]
+    roles = ["Question: ", "Answer: "]
     context: Dict[str, Any] = qa_example["context"]
     question: str = qa_example["question"]
     answer: str = qa_example["long_answer"]
@@ -67,7 +67,7 @@ def process_pubmed_qa(
 
     # Mask targets. Only want to train on responses to the questions, not on how
     # to generate questions/contexts.
-    sep = f"\n{roles[1]}: "
+    sep = f"\n{roles[1]} "
     split = prompt.split(sep)
     assert len(split) == 2
     split[0] += sep

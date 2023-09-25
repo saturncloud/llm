@@ -24,12 +24,16 @@ class QASession:
         vector_store: VectorStore,
         conv: Optional[ConversationBufferWindowMemory] = None,
         prompt: ContextPrompt = ZERO_SHOT,
+        human_label: Optional[str] = None,
+        ai_label: Optional[str] = None,
         debug: bool = False,
     ):
         self.engine = engine
         self.vector_store = vector_store
-        self.conv = conv or ConversationBufferWindowMemory(human_prefix="Question", ai_prefix="Answer")
+        self.conv = conv or ConversationBufferWindowMemory(human_prefix="Question: ", ai_prefix="Answer: ")
         self.prompt = prompt
+        self.human_label = human_label or self.conv.human_prefix
+        self.ai_label = ai_label or self.conv.ai_prefix
         self.debug = debug
         self.results: List[Document] = []
         self.contexts: List[str] = []
@@ -66,7 +70,7 @@ class QASession:
         input_text = self.prompt.render(question=question, contexts=self.contexts, **prompt_kwargs)
 
         gen_kwargs = {
-            "stop": [f"{self.conv.human_prefix}:", f"{self.prompt.default_context_label}:"],
+            "stop": [self.conv.human_prefix, self.prompt.default_context_label],
             "temperature": 0.7,
             "top_p": 0.9,
             **kwargs,
@@ -106,7 +110,7 @@ class QASession:
             conversation=history, roles=self.roles, question=question
         )
         params = {
-            "stop": f"{self.conv.human_prefix}:",
+            "stop": self.conv.human_prefix,
             "temperature": 0.7,
             "top_p": 0.9,
             **kwargs,
@@ -186,10 +190,10 @@ class QASession:
         return separator.join(history)
 
     def format_question(self, question: str) -> str:
-        return f"{self.conv.human_prefix}: {question}"
+        return f"{self.human_label}{question}"
 
     def format_answer(self, answer: str) -> str:
-        return f"{self.conv.ai_prefix}: {answer}"
+        return f"{self.ai_label}{answer}"
 
     def clear(self, keep_results: bool = False):
         self.conv.clear()

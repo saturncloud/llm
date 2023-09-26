@@ -54,7 +54,7 @@ def process_pubmed_qa(
     answer: str = qa_example["long_answer"]
     message = Message(question, answer, contexts=context["contexts"])
 
-    prompt = ZeroShotQA().render([message], format=format)
+    prompt = ZeroShotQA(format=format).render([message])
 
     # Tokenize conversations
     input_ids: torch.Tensor = tokenizer(

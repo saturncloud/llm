@@ -15,7 +15,7 @@ from transformers import (
 )
 
 from llm.utils.data import merge_dict
-from llm.prompt import Llama2Format, Conversation, RedpajamaFormat, TogetherLlama2Format, VicunaFormat
+from llm.prompt import Llama2Format, Conversation, PromptFormat, RedpajamaFormat, TogetherLlama2Format, VicunaFormat
 
 default_model_kwargs = {}
 default_tokenizer_kwargs = {
@@ -53,6 +53,7 @@ class ModelConfig:
     """
     model_id: str
     max_length: int = 512
+    format: PromptFormat = field(default_factory=PromptFormat)
     model_kwargs: Dict[str, Any] = field(default_factory=dict)
     tokenizer_kwargs: Dict[str, Any] = field(default_factory=dict)
     model_cls: Optional[Type[PreTrainedModel]] = None
@@ -148,80 +149,64 @@ def trim_model_path(model_id: str) -> str:
 
 VICUNA_7B = ChatModelConfig(
     "lmsys/vicuna-7b-v1.5",
+    max_length=4096,
+    format=VicunaFormat(),
     tokenizer_kwargs={
         # Llama fast tokenizer is not good
         "use_fast": False,
     },
-    conversation_kwargs={
-        "format": VicunaFormat(),
-    }
 )
 
 VICUNA_13B = ChatModelConfig(
     "lmsys/vicuna-13b-v1.5",
     max_length=4096,
+    format=VicunaFormat(),
     tokenizer_kwargs={
         "use_fast": False
     },
-    conversation_kwargs={
-        "format": VicunaFormat(),
-    }
 )
 
 VICUNA_33B = ChatModelConfig(
     "lmsys/vicuna-33b-v1.5",
+    max_length=4096,
+    format=VicunaFormat(),
     tokenizer_kwargs={
         "use_fast": False
     },
-    conversation_kwargs={
-        "format": VicunaFormat(),
-    }
 )
 
 LLAMA2_7B = ChatModelConfig(
     "meta-llama/Llama-2-7b-chat-hf",
     max_length=4096,
-    conversation_kwargs={
-        "format": Llama2Format(),
-    },
+    format=Llama2Format(),
 )
 
 LLAMA2_13B = ChatModelConfig(
     "meta-llama/Llama-2-13b-chat-hf",
     max_length=4096,
-    conversation_kwargs={
-        "format": Llama2Format(),
-    },
+    format=Llama2Format(),
 )
 
 LLAMA2_7B_32K = ChatModelConfig(
     "togethercomputer/LLaMA-2-7B-32K",
     max_length=32768,
-    conversation_kwargs={
-        "format": TogetherLlama2Format(),
-    },
+    format=TogetherLlama2Format(),
 )
 
 LLAMA2_7B_32K_INSTRUCT = ChatModelConfig(
     "togethercomputer/Llama-2-7B-32K-Instruct",
     max_length=32768,
-    conversation_kwargs={
-        "format": TogetherLlama2Format(),
-    },
+    format=TogetherLlama2Format(),
 )
 
 REDPAJAMA_INSTRUCT = ChatModelConfig(
     "togethercomputer/RedPajama-INCITE-7B-Instruct",
-    conversation_kwargs={
-        "format": RedpajamaFormat(),
-    },
+    format=RedpajamaFormat(),
 )
 
 REDPAJAMA_CHAT = ChatModelConfig(
     "togethercomputer/RedPajama-INCITE-7B-Chat",
-    conversation_kwargs={
-        "format": RedpajamaFormat(),
-    }
+    format=RedpajamaFormat(),
 )
 
 MPT_INSTRUCT = ChatModelConfig(

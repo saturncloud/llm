@@ -22,25 +22,20 @@ class QASession:
         self,
         engine: InferenceEngine,
         vector_store: VectorStore,
-        conversation: Conversation,
-        prompt: Union[Prompt, Type[Prompt]] = FewShotQA,
-        standalone_question_prompt: Union[Prompt, Type[Prompt]] = StandaloneQuestion,
-        user_label: Optional[str] = None,
-        assistant_label: Optional[str] = None,
+        prompt: Prompt,
+        standalone_question_prompt: Prompt,
+        conversation: Optional[Conversation] = None,
+        user_label: str = "Question: ",
+        assistant_label: str = "Answer: ",
         debug: bool = False,
     ):
-        if isinstance(prompt, type):
-            prompt = prompt()
-        if isinstance(standalone_question_prompt, type):
-            standalone_question_prompt = standalone_question_prompt()
-
         self.engine = engine
         self.vector_store = vector_store
-        self.conversation = conversation
+        self.conversation = conversation if conversation else Conversation()
         self.qa_prompt = prompt
         self.standalone_question_prompt = standalone_question_prompt
-        self.user_label = user_label or self.conversation.format.user.prefix
-        self.assistant_label = assistant_label or self.conversation.format.assistant.prefix
+        self.user_label = user_label
+        self.assistant_label = assistant_label
         self.debug = debug
         self.results: List[Document] = []
         self.contexts: List[str] = []
@@ -51,6 +46,8 @@ class QASession:
         model_config: ChatModelConfig,
         vector_store: VectorStore,
         engine: Optional[InferenceEngine] = None,
+        prompt: Union[Prompt, Type[Prompt]] = FewShotQA,
+        standalone_question_prompt: Union[Prompt, Type[Prompt]] = StandaloneQuestion,
         **kwargs,
     ) -> QASession:
         if engine is None:
@@ -62,12 +59,11 @@ class QASession:
                     "quantization_config": bnb_quantization(),
                 },
             )
-        conv = model_config.new_conversation()
-        return cls(engine, vector_store, conversation=conv, **kwargs)
-
-    @property
-    def stop_strings(self) -> List[str]:
-        return self.conversation.format.stop_strings
+        if isinstance(prompt, type):
+            prompt = prompt(format=model_config.format)
+        if isinstance(standalone_question_prompt, type):
+            standalone_question_prompt = standalone_question_prompt(format=model_config.format)
+        return cls(engine, vector_store, **kwargs)
 
     def stream_answer(self, question: str, update_context: bool = False, with_prefix: bool = False, **kwargs) -> Iterable[str]:
         """
@@ -89,7 +85,7 @@ class QASession:
             print(f"\n** Context Input **\n{input_text}")
 
         gen_kwargs = {
-            "stop": self.stop_strings,
+            "stop": self.qa_prompt.format.stop_strings,
             "temperature": 0.7,
             "top_p": 0.9,
             **kwargs,
@@ -129,13 +125,13 @@ class QASession:
             messages = [*self.conversation.messages, Message(question)]
 
         input_text = self.standalone_question_prompt.render(
-            messages=messages, format=self.conversation.format, with_contexts=False
+            messages=messages, with_contexts=False
         )
         if self.debug:
             print(f"\n** Standalone Input **\n{input_text}")
 
         params = {
-            "stop": self.stop_strings,
+            "stop": self.standalone_question_prompt.format.stop_strings,
             "temperature": 0.7,
             "top_p": 0.9,
             **kwargs,

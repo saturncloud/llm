@@ -9,11 +9,12 @@ class Role:
     prefix: str = ""
     suffix: str = ""
 
-    def render(self, text: str, partial: bool = False) -> str:
-        text = f"{self.prefix}{text}"
-        if partial:
-            return text
-        return f"{text}{self.suffix}"
+    def render(self, text: str, with_prefix: bool = True, with_suffix: bool = True) -> str:
+        if with_prefix:
+            text = f"{self.prefix}{text}"
+        if with_suffix:
+            text = f"{text}{self.suffix}"
+        return text
 
     @property
     def stop_strings(self) -> List[str]:
@@ -105,6 +106,7 @@ class Message:
 class Prompt:
     system_message: str = ""
     examples: List[List[Message]] = field(default_factory=list)
+    format: PromptFormat = field(default_factory=PromptFormat)
 
     # Applies to message input string separate from contexts
     input_template: str = "{input}"
@@ -116,7 +118,6 @@ class Prompt:
     def render(
         self,
         messages: List[Message],
-        format: Optional[PromptFormat] = None,
         with_system: bool = True,
         with_contexts: bool = True,
         with_examples: bool = True,
@@ -124,32 +125,22 @@ class Prompt:
         """
         Render the prompt as a conversation.
         """
-        if format is None:
-            format = PromptFormat()
         results: List[str] = []
 
         # Format examples
         if with_examples and self.examples:
-            for example in self.examples:
-                example_str = self.render(
-                    example,
-                    format=format,
-                    with_system=with_system,
-                    with_contexts=with_contexts,
-                    with_examples=False,
-                )
-                example_str = format.example.render(example_str)
-                results.append(example_str)
-                # Only add system message once
-                with_system = False
+            examples_str = self.render_examples(with_system=with_system, with_contexts=with_contexts)
+            results.append(examples_str)
+            # System messed is included with examples
+            with_system = False
 
         num_messages = len(messages)
         if num_messages == 0 and len(results) == 0:
             # No messages, and no examples. Return system message.
-            if with_system:
-                system_message = format.system.render(self.system_message)
-                if format.system_nested:
-                    system_message = format.user.render(system_message)
+            if with_system and self.system_message:
+                system_message = self.render_system()
+                if self.format.system_nested:
+                    system_message = self.format.user.render(system_message, with_suffix=False)
                 return system_message
             return ""
 
@@ -158,82 +149,115 @@ class Prompt:
             last = (i == num_messages - 1)
             message_str = self.render_message(
                 message,
-                format=format,
                 last=last,
                 with_system=(with_system and (i == 0)),
                 with_contexts=with_contexts,
             )
             results.append(message_str)
 
-        return format.join(results).strip()
+        return self.format.join(results).strip()
 
     def render_message(
         self,
         message: Message,
-        format: Optional[PromptFormat] = None,
         last: bool = False,
         with_system: bool = True,
         with_contexts: bool = True,
     ) -> str:
-        if format is None:
-            format = PromptFormat()
-        results = []
-        inputs = []
+        input_str = self.render_input(
+            message.input, message.contexts if with_contexts else None, with_system=with_system
+        )
+        response_str = self.render_response(message.response, last=last)
 
-        # Format system message
-        if with_system:
-            system_message = format.system.render(self.system_message)
-            if format.system_nested:
+        final_str = self.format.join([input_str, response_str])
+        if self.format.BOS:
+            final_str = self.format.BOS + final_str
+        return final_str
+
+    def render_input(self, text: str, contexts: Optional[List[str]] = None, with_system: bool = True) -> str:
+        results: List[str] = []
+        inputs: List[str] = []
+
+        if with_system and self.system_message:
+            system_message = self.render_system()
+            if self.format.system_nested:
                 # System message nested within input formatting (e.g. Llama2)
                 inputs.append(system_message)
             else:
                 # System message before input formatting
                 results.append(system_message)
 
-        # Format contexts
-        if with_contexts:
-            context_str = format.join([
-                self.context_template.format(context=context)
-                for context in message.contexts
-            ])
-            context_str = format.context.render(context_str)
+        if contexts:
+            context_str = self.render_contexts(contexts)
             inputs.append(context_str)
 
-        # Format user input
-        user_input_str = self.input_template.format(input=message.input)
-        inputs.append(user_input_str)
+        user_str = self.render_user(text)
+        inputs.append(user_str)
 
-        # Combine input parts
-        full_input_str = format.user.render(format.join(inputs))
-        results.append(full_input_str)
+        input_str = self.format.join(inputs)
+        input_str = self.format.user.render(input_str)
+        results.append(input_str)
+        return self.format.join(results)
 
-        # Format response text
-        if message.response is not None:
-            # Add fully formatted response
-            response_text = self.response_template.format(response=message.response)
-            response_text = format.assistant.render(response_text)
-            if format.EOS:
-                response_text += format.EOS
-            results.append(response_text)
-        elif last:
-            # Adds assistant prefix and response template to prompt a response
-            # EOS is expected to be generated by the model once its response is complete
+    def render_system(self) -> str:
+        return self.format.system.render(self.system_message)
+
+    def render_examples(self, with_system: bool = True, with_contexts: bool = True) -> str:
+        results: List[str] = []
+        for example in self.examples:
+            example_str = self.render(
+                example,
+                with_system=with_system,
+                with_contexts=with_contexts,
+                with_examples=False,
+            )
+            example_str = self.format.example.render(example_str)
+            results.append(example_str)
+            # Only add system message once
+            with_system = False
+        return self.format.join(results)
+
+    def render_contexts(self, contexts: List[str]) -> str:
+        context_str = self.format.join([
+            self.context_template.format(context=context)
+            for context in contexts
+        ])
+        return self.format.context.render(context_str)
+
+    def render_user(self, text: str) -> str:
+        return self.input_template.format(input=text)
+
+    def render_response(
+        self,
+        text: Optional[str],
+        last: bool = False,
+        with_prefix: bool = True,
+        with_suffix: bool = True,
+    ) -> str:
+        if text is None:
+            # Empty response.
+            # If last, assistant suffix and EOS are expected to be generated by the model
             response_partial = self.response_template.format(response="")
-            response_partial = format.assistant.render(response_partial, partial=True)
-            if response_partial:
-                results.append(response_partial)
+            response_partial = self.format.assistant.render(
+                response_partial, with_prefix=with_prefix, with_suffix=(with_suffix and not last)
+            )
+            if not last and self.format.EOS:
+                response_partial += self.format.EOS
+            return response_partial
 
-        # Combine all message parts
-        final_str = format.join(results)
-        if format.BOS:
-            final_str = format.BOS + final_str
-        return final_str
+        # Fully formatted response
+        response_text = self.response_template.format(response=text)
+        response_text = self.format.assistant.render(
+            response_text, with_prefix=with_prefix, with_suffix=with_suffix
+        )
+        if self.format.EOS:
+            response_text += self.format.EOS
+        return response_text
 
 
 @dataclass
 class Conversation:
     messages: List[Message] = field(default_factory=list)
-    format: PromptFormat = field(default_factory=UserAssistantFormat)
 
     message_retention: int = 5
     context_retention: int = 1
@@ -258,5 +282,5 @@ class Conversation:
     def clear(self):
         self.messages = []
 
-    def render(self, prompt: Prompt) -> str:
-        return prompt.render(self.messages, format=self.format)
+    def render(self, prompt: Prompt, **kwargs) -> str:
+        return prompt.render(self.messages, **kwargs)

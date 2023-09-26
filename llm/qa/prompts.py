@@ -97,10 +97,9 @@ class StandaloneQuestion(Prompt):
     def render_message(
         self,
         message: Message,
-        format: Optional[PromptFormat] = None,
         last: bool = False,
         **kwargs
     ) -> str:
         if last:
-            return self.followup_question.render_message(message, format=format, last=last, **kwargs)
-        return super().render_message(message, format=format, last=last, **kwargs)
+            return self.followup_question.render_message(message, last=last, **kwargs)
+        return super().render_message(message, last=last, **kwargs)

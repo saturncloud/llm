@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
+if TYPE_CHECKING:
+    from llm.model_configs import ModelConfig
 
 
 @dataclass
@@ -31,8 +33,8 @@ class PromptFormat:
     user: Role = field(default_factory=Role)
     assistant: Role = field(default_factory=Role)
     system: Role = field(default_factory=Role)
-    context: Role = field(default_factory=Role)
-    example: Role = field(default_factory=Role)
+    contexts: Role = field(default_factory=Role)
+    examples: Role = field(default_factory=Role)
 
     # System message nested within the first user message (Llama2 format)
     system_nested: bool = False
@@ -52,8 +54,8 @@ class PromptFormat:
             self.user.stop_strings
             + self.assistant.stop_strings
             + self.system.stop_strings
-            + self.context.stop_strings
-            + self.example.stop_strings
+            + self.contexts.stop_strings
+            + self.examples.stop_strings
         )
 
 
@@ -105,7 +107,7 @@ class Message:
 @dataclass
 class Prompt:
     system_message: str = ""
-    examples: List[List[Message]] = field(default_factory=list)
+    examples: List[Message] = field(default_factory=list)
     format: PromptFormat = field(default_factory=PromptFormat)
 
     # Applies to message input string separate from contexts
@@ -115,12 +117,17 @@ class Prompt:
     # Applies to previous responses, and appended with "" to prompt the next response
     response_template: str = "{response}"
 
+    @classmethod
+    def from_model_config(cls, model_config: ModelConfig, **kwargs):
+        return cls(format=model_config.format, **kwargs)
+
     def render(
         self,
         messages: List[Message],
         with_system: bool = True,
         with_contexts: bool = True,
         with_examples: bool = True,
+        strip: bool = True,
     ) -> str:
         """
         Render the prompt as a conversation.
@@ -155,7 +162,10 @@ class Prompt:
             )
             results.append(message_str)
 
-        return self.format.join(results).strip()
+        final_str = self.format.join(results)
+        if strip:
+            return final_str.strip()
+        return final_str
 
     def render_message(
         self,
@@ -203,26 +213,16 @@ class Prompt:
         return self.format.system.render(self.system_message)
 
     def render_examples(self, with_system: bool = True, with_contexts: bool = True) -> str:
-        results: List[str] = []
-        for example in self.examples:
-            example_str = self.render(
-                example,
-                with_system=with_system,
-                with_contexts=with_contexts,
-                with_examples=False,
-            )
-            example_str = self.format.example.render(example_str)
-            results.append(example_str)
-            # Only add system message once
-            with_system = False
-        return self.format.join(results)
+        return self.render(
+            self.examples, with_system=with_system, with_contexts=with_contexts, with_examples=False
+        )
 
     def render_contexts(self, contexts: List[str]) -> str:
-        context_str = self.format.join([
+        contexts_str = self.format.join([
             self.context_template.format(context=context)
             for context in contexts
         ])
-        return self.format.context.render(context_str)
+        return self.format.contexts.render(contexts_str)
 
     def render_user(self, text: str) -> str:
         return self.input_template.format(input=text)

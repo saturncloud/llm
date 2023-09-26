@@ -81,7 +81,7 @@ class QASession:
             print(f"\n** Context Input **\n{input_text}")
 
         gen_kwargs = {
-            "stop": self.qa_prompt.format.stop_strings,
+            "stop": self.qa_prompt.stop_strings,
             "temperature": 0.7,
             "top_p": 0.9,
             **kwargs,
@@ -127,7 +127,7 @@ class QASession:
             print(f"\n** Standalone Input **\n{input_text}")
 
         params = {
-            "stop": self.rephrase_prompt.format.stop_strings,
+            "stop": self.rephrase_prompt.stop_strings,
             "temperature": 0.7,
             "top_p": 0.9,
             **kwargs,

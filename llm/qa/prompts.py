@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List
 
-from llm.prompt import Prompt, Message, PromptFormat
+from llm.prompt import Prompt, Message
 
 
 @dataclass
@@ -81,6 +81,16 @@ class StandaloneQuestion(Prompt):
                 response="Who are the primary parties bound by the contract?",
         ),
     ])
+
+    @property
+    def stop_strings(self) -> List[str]:
+        # Sometimes models will generate an "Answer: ..." after the standalone question.
+        # Use the context response template as an additional stop string to prevent this.
+        stop_strings = super().stop_strings
+        answer_label = self.context_prompt.response_template.format(response="")
+        if answer_label.strip():
+            stop_strings.append(answer_label)
+        return stop_strings
 
     def render_contexts(self, contexts: List[str]) -> str:
         # Override to render contexts as a conversation

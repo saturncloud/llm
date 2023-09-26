@@ -121,6 +121,10 @@ class Prompt:
     def from_model_config(cls, model_config: ModelConfig, **kwargs):
         return cls(format=model_config.format, **kwargs)
 
+    @property
+    def stop_strings(self) -> List[str]:
+        return self.format.stop_strings
+
     def render(
         self,
         messages: List[Message],

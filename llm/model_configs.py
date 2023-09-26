@@ -19,7 +19,6 @@ from llm.prompt import Llama2Format, Conversation, PromptFormat, RedpajamaFormat
 
 default_model_kwargs = {}
 default_tokenizer_kwargs = {
-    "use_fast": True,
     # https://github.com/huggingface/transformers/pull/24565
     "legacy": False,
 }
@@ -151,28 +150,18 @@ VICUNA_7B = ChatModelConfig(
     "lmsys/vicuna-7b-v1.5",
     max_length=4096,
     format=VicunaFormat(),
-    tokenizer_kwargs={
-        # Llama fast tokenizer is not good
-        "use_fast": False,
-    },
 )
 
 VICUNA_13B = ChatModelConfig(
     "lmsys/vicuna-13b-v1.5",
     max_length=4096,
     format=VicunaFormat(),
-    tokenizer_kwargs={
-        "use_fast": False
-    },
 )
 
 VICUNA_33B = ChatModelConfig(
     "lmsys/vicuna-33b-v1.5",
     max_length=4096,
     format=VicunaFormat(),
-    tokenizer_kwargs={
-        "use_fast": False
-    },
 )
 
 LLAMA2_7B = ChatModelConfig(

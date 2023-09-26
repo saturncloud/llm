@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 import torch
 from transformers import (
     AutoModelForCausalLM,
@@ -15,7 +15,7 @@ from transformers import (
 )
 
 from llm.utils.data import merge_dict
-from llm.prompt import Llama2Format, Conversation, PromptFormat, RedpajamaFormat, TogetherLlama2Format, VicunaFormat
+from llm.prompt import ChatMLFormat, DollyFormat, Llama2Format, Conversation, PromptFormat, RedpajamaFormat, TogetherLlama2Format, VicunaFormat
 
 default_model_kwargs = {}
 default_tokenizer_kwargs = {
@@ -188,32 +188,42 @@ LLAMA2_7B_32K_INSTRUCT = ChatModelConfig(
     format=TogetherLlama2Format(),
 )
 
-REDPAJAMA_INSTRUCT = ChatModelConfig(
+REDPAJAMA_7B_INSTRUCT = ChatModelConfig(
     "togethercomputer/RedPajama-INCITE-7B-Instruct",
     format=RedpajamaFormat(),
 )
 
-REDPAJAMA_CHAT = ChatModelConfig(
+REDPAJAMA_7B_CHAT = ChatModelConfig(
     "togethercomputer/RedPajama-INCITE-7B-Chat",
     format=RedpajamaFormat(),
 )
 
-MPT_INSTRUCT = ChatModelConfig(
+MPT_7B_INSTRUCT = ChatModelConfig(
     "mosaicml/mpt-7b-instruct",
+    format=DollyFormat(),
     model_kwargs={
-        "init_device": "cuda:0",
+        "init_device": "meta",
         # MPT not yet full supported by Transformers
         "trust_remote_code": True,
-        "revision": "1fc4634127ec64a45716003578b9cfae23265849",
     },
 )
 
-MPT_CHAT = ChatModelConfig(
+MPT_7B_CHAT = ChatModelConfig(
     "mosaicml/mpt-7b-chat",
+    format=ChatMLFormat(),
     model_kwargs={
-        "init_device": "cuda:0",
+        "init_device": "meta",
         # MPT not yet full supported by Transformers
         "trust_remote_code": True,
-        "revision": "c53dee01e05098f81cac11145f9bf45feedc5b2f",
+    },
+)
+
+MPT_30B_CHAT = ChatModelConfig(
+    "mosaicml/mpt-30b-chat",
+    format=ChatMLFormat(),
+    model_kwargs={
+        "init_device": "meta",
+        # MPT not yet full supported by Transformers
+        "trust_remote_code": True,
     },
 )

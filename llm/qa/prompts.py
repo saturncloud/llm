@@ -9,8 +9,8 @@ from llm.prompt import Prompt, Message
 @dataclass
 class ZeroShotQA(Prompt):
     system_message: str = "Given the following contexts and a question, create a final answer. Only use the given context to arrive at your answer. If you don't know the answer, just say that you don't know. Don't make up an answer."
-    context_template: str = "\nContext: {context}"
-    input_template: str = "\nQuestion: {input}"
+    context_template: str = "Context: {context}"
+    input_template: str = "Question: {input}"
 
 
 @dataclass
@@ -47,11 +47,11 @@ class FewShotQA(ZeroShotQA):
 @dataclass
 class StandaloneQuestion(Prompt):
     system_message: str = "Given the following conversation and a followup question, rephrase the followup question as a standalone question with any relevant context. The final answer should be a concise search query that will find results relevant to the followup question."
-    input_template: str = "\nFollowup Question: {input}"
-    response_template: str = "\nStandalone Question: {response}"
+    input_template: str = "Followup Question: {input}"
+    response_template: str = "Standalone Question: {response}"
     context_prompt: Prompt = field(default_factory=lambda: Prompt(
-        input_template="\nQuestion: {input}",
-        response_template="\nAnswer: {response}",
+        input_template="Question: {input}",
+        response_template="Answer: {response}",
     ))
     examples: List[Message] = field(default_factory=lambda: [
         Message(
@@ -77,8 +77,8 @@ class StandaloneQuestion(Prompt):
                 "Which state/country's law governs the interpretation of the contract?",
                 "This Agreement is governed by English law.",
             ],
-                input="Who are the primary parties bound by the contract?",
-                response="Who are the primary parties bound by the contract?",
+            input="Who are the primary parties bound by the contract?",
+            response="Who are the primary parties bound by the contract?",
         ),
     ])
 

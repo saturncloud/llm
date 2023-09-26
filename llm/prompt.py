@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Iterable, List, Optional
 if TYPE_CHECKING:
     from llm.model_configs import ModelConfig
 
@@ -38,25 +38,35 @@ class PromptFormat:
 
     # System message nested within the first user message (Llama2 format)
     system_nested: bool = False
-    # Separator between each message and context
+    # Strip prefixes/suffixes before returning them as strop strings
+    strip_stop_strings: bool = False
+    # Separator between each message
     message_separator: str = "\n"
+    # Separator between input components (e.g. contexts)
+    content_separator: str = "\n"
     # String added before each message input
     BOS: str = ""
     # String added after each message response
     EOS: str = ""
 
-    def join(self, texts: List[str]) -> str:
+    def join_messages(self, texts: Iterable[str]) -> str:
         return self.message_separator.join(texts)
+
+    def join_contents(self, contents: Iterable[str]) -> str:
+        return self.content_separator.join(contents)
 
     @property
     def stop_strings(self) -> List[str]:
-        return (
+        stop_strings = (
             self.user.stop_strings
             + self.assistant.stop_strings
             + self.system.stop_strings
             + self.contexts.stop_strings
             + self.examples.stop_strings
         )
+        if self.strip_stop_strings:
+            return [s.strip() for s in stop_strings]
+        return stop_strings
 
 
 @dataclass
@@ -92,9 +102,25 @@ class Llama2Format(PromptFormat):
 @dataclass
 class TogetherLlama2Format(PromptFormat):
     # Simplified version of Llama2 roles used in togethercomputer/Llama-2-7B-32K-Instruct
-    user: Role = field(default_factory=lambda: Role(prefix="  [INST]  ", suffix="  [/INST]  "))
+    # This is a combination of the format it was trained on, and the format recommended for inference.
+    user: Role = field(default_factory=lambda: Role(prefix="[INST]  ", suffix="  [/INST]\n\n"))
     system_nested: bool = True
     message_separator: str = ""
+    # Model tends to generate "[/INST]" with different spacings
+    strip_stop_strings: bool = True
+
+
+@dataclass
+class ChatMLFormat(PromptFormat):
+    user: Role = field(default_factory=lambda: Role(prefix="<|im_start|>user\n", suffix="<|im_end|>"))
+    assistant: Role = field(default_factory=lambda: Role(prefix="<|im_start|>assistant\n", suffix="<|im_end|>"))
+    system: Role = field(default_factory=lambda: Role(prefix="<|im_start|>system\n", suffix="<|im_end|>"))
+
+
+@dataclass
+class DollyFormat(PromptFormat):
+    user: Role = field(default_factory=lambda: Role(prefix="\n### Instruction:\n"))
+    assistant: Role = field(default_factory=lambda: Role(prefix="\n### Response:\n"))
 
 
 @dataclass
@@ -166,7 +192,7 @@ class Prompt:
             )
             results.append(message_str)
 
-        final_str = self.format.join(results)
+        final_str = self.format.join_messages(results)
         if strip:
             return final_str.strip()
         return final_str
@@ -183,23 +209,20 @@ class Prompt:
         )
         response_str = self.render_response(message.response, last=last)
 
-        final_str = self.format.join([input_str, response_str])
+        final_str = self.format.join_messages([input_str, response_str])
         if self.format.BOS:
             final_str = self.format.BOS + final_str
         return final_str
 
     def render_input(self, text: str, contexts: Optional[List[str]] = None, with_system: bool = True) -> str:
-        results: List[str] = []
         inputs: List[str] = []
-
+        system_message = ""
         if with_system and self.system_message:
             system_message = self.render_system()
             if self.format.system_nested:
                 # System message nested within input formatting (e.g. Llama2)
                 inputs.append(system_message)
-            else:
-                # System message before input formatting
-                results.append(system_message)
+                system_message = ""
 
         if contexts:
             context_str = self.render_contexts(contexts)
@@ -208,10 +231,12 @@ class Prompt:
         user_str = self.render_user(text)
         inputs.append(user_str)
 
-        input_str = self.format.join(inputs)
+        input_str = self.format.join_contents(inputs)
         input_str = self.format.user.render(input_str)
-        results.append(input_str)
-        return self.format.join(results)
+        if system_message:
+            # Join system message with user message
+            return self.format.join_messages([system_message, input_str])
+        return input_str
 
     def render_system(self) -> str:
         return self.format.system.render(self.system_message)
@@ -222,7 +247,7 @@ class Prompt:
         )
 
     def render_contexts(self, contexts: List[str]) -> str:
-        contexts_str = self.format.join([
+        contexts_str = self.format.join_contents([
             self.context_template.format_map({"context": context, "index": i})
             for i, context in enumerate(contexts)
         ])

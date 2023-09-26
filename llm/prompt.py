@@ -219,8 +219,8 @@ class Prompt:
 
     def render_contexts(self, contexts: List[str]) -> str:
         contexts_str = self.format.join([
-            self.context_template.format(context=context)
-            for context in contexts
+            self.context_template.format_map({"context": context, "index": i})
+            for i, context in enumerate(contexts)
         ])
         return self.format.contexts.render(contexts_str)
 

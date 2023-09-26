@@ -65,7 +65,7 @@ class QASession:
             standalone_question_prompt = standalone_question_prompt(format=model_config.format)
         return cls(engine, vector_store, **kwargs)
 
-    def stream_answer(self, question: str, update_context: bool = False, with_prefix: bool = False, **kwargs) -> Iterable[str]:
+    def stream_answer(self, question: str, update_context: bool = False, **kwargs) -> Iterable[str]:
         """
         Stream response to the given question using the session's prompt and contexts.
         """
@@ -90,14 +90,11 @@ class QASession:
             "top_p": 0.9,
             **kwargs,
         }
-        prefix = ""
-        if with_prefix:
-            prefix = self.assistant_label
 
         output_text = ""
         for output_text in self.engine.generate_stream(input_text, **gen_kwargs):
             output_text = output_text.strip()
-            yield prefix + output_text
+            yield output_text
 
         message.response = output_text
         if self.debug:
@@ -170,15 +167,15 @@ class QASession:
             return self.conversation.messages[-1]
         return None
 
-    def get_history(self, separator: str = "\n") -> str:
+    def get_history(self, user_label: str = "Question: ", assistant_label: str = "Answer: ", separator: str = "\n") -> str:
         """
-        Get conversation history
+        Get conversation history formatted as a string
         """
         history = []
         for message in self.conversation.messages:
-            history.append(f"{self.user_label}{message.input}")
+            history.append(f"{user_label}{message.input}")
             if message.response is not None:
-                history.append(f"{self.assistant_label}{message.response}")
+                history.append(f"{assistant_label}{message.response}")
 
         return separator.join(history)
 

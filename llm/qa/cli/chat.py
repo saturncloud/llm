@@ -42,7 +42,8 @@ def cmdline_cli(dataset_path: str, dataset_type: Optional[str], index_path: Opti
         qa_session.search_context(search_query)
 
         prev_output = ""
-        for output_text in qa_session.stream_answer(input_text, with_prefix=True):
+        print("Answer: ", end="", flush=True)
+        for output_text in qa_session.stream_answer(input_text):
             new_output = output_text[len(prev_output):]
             prev_output = output_text
             print(new_output, end="", flush=True)

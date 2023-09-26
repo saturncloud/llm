@@ -16,8 +16,6 @@ QA_INDEX_PATH = os.getenv("QA_INDEX_PATH")
 QA_CONTEXT_MODEL = os.getenv("QA_CONTEXT_MODEL", DEFAULT_MODEL)
 QA_CHAT_MODEL = os.getenv("QA_CHAT_MODEL", VICUNA_7B.model_id)
 
-MARKDOWN_LINEBREAK = "  \n"
-
 
 @st.cache_resource
 def get_vector_store(dataset_path: Optional[str] = None, index_path: Optional[str] = None) -> DatasetVectorStore:
@@ -44,7 +42,7 @@ def get_qa_session(model_config: ModelConfig, engine: InferenceEngine, vector_st
 
 
 def render_app(qa_session: QASession):
-    output = st.text("")
+    chat_container = st.container()
     included: List[bool] = []
 
     clear_convo = st.button("clear conversation")
@@ -79,7 +77,14 @@ def render_app(qa_session: QASession):
     if query_submitted and not clear_convo:
         # Write user input out to streamlit, then search for contexts
         qa_session.append_question(user_input)
-        output.write(qa_session.get_history(separator=MARKDOWN_LINEBREAK))
+        with chat_container:
+            for message in qa_session.conversation.messages:
+                with st.chat_message("user"):
+                    st.write(message.input)
+
+                if message.response is not None:
+                    with st.chat_message("assistant"):
+                        st.write(message.response)
 
         with st.spinner("Searching..."):
             if rephrase_question:
@@ -107,14 +112,11 @@ def render_app(qa_session: QASession):
     if not clear_convo:
         if query_submitted:
             # Stream response from LLM, updating chat window at each step
-            history = qa_session.get_history(separator=MARKDOWN_LINEBREAK) + MARKDOWN_LINEBREAK
-            for text in qa_session.stream_answer(user_input, with_prefix=True):
-                message = history + text
-                output.write(message)
-        else:
-            # Write existing message history
-            message = qa_session.get_history(separator=MARKDOWN_LINEBREAK)
-            output.write(message)
+            with chat_container, st.chat_message("assistant"):
+                answer = st.text("")
+                # TODO: Handle labeling here and remove it from qa_session
+                for text in qa_session.stream_answer(user_input):
+                    answer.write(text)
 
 
 def filter_contexts(qa_session: QASession, included: List[bool]):

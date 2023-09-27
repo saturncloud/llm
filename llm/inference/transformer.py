@@ -63,7 +63,7 @@ class TransformersEngine(InferenceEngine):
         if self.model.config.is_encoder_decoder:
             max_src_len = self.max_length
         else:
-            max_src_len = self.max_length - max_new_tokens - 8
+            max_src_len = self.max_length - max_new_tokens - 1
         input_ids = input_ids[-max_src_len:]
         input_echo_len = len(input_ids)
 

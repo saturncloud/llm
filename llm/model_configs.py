@@ -40,6 +40,9 @@ class ModelConfig:
     """
     Stores model and tokenizer configuration for
     pretrained huggingface models.
+
+    PEFT models use their peft adapter name as model_id,
+    and set the base model ID in peft_base_id.
     """
     model_id: str = ""
     max_length: int = 2048
@@ -48,47 +51,38 @@ class ModelConfig:
     tokenizer_kwargs: Dict[str, Any] = field(default_factory=dict)
     model_cls: Optional[Type[PreTrainedModel]] = None
     tokenizer_cls: Optional[Type[PreTrainedTokenizerBase]] = None
-    peft_adapter: Optional[str] = None
+    peft_base_id: Optional[str] = None
     peft_kwargs: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         self.model_id = trim_model_path(self.model_id)
-        if self.peft_adapter:
-            self.peft_adapter = trim_model_path(self.peft_adapter)
+        if self.peft_base_id:
+            self.peft_base_id = trim_model_path(self.peft_base_id)
 
     def __init_subclass__(cls) -> None:
-        if cls.peft_adapter:
-            cls.register(trim_model_path(cls.peft_adapter))
-        elif cls.model_id:
-            cls.register(trim_model_path(cls.model_id))
+        if cls.model_id:
+            cls.register(cls.model_id)
 
     @classmethod
-    def register(cls, *names: str):
+    def register(cls, *model_ids: str):
         """
-        Register additional model_id names/paths for the class
+        Register additional model_ids for the class
         """
-        for name in names:
-            _registry[name] = cls
+        for name in model_ids:
+            _registry[trim_model_path(name)] = cls
 
     @classmethod
-    def from_registry(cls, name: str, **kwargs) -> ModelConfig:
+    def from_registry(cls, model_id: str, **kwargs) -> ModelConfig:
         """
         Load model config from the registry
         """
-        if name not in _registry:
-            name = trim_model_path(name)
-        if name in _registry:
-            cls = _registry[name]
+        model_id = trim_model_path(model_id)
+        if model_id in _registry:
+            cls = _registry[model_id]
         else:
-            logging.warn(f'ModelConfig "{name}" not found in registry. Using generic configuration.')
+            logging.warn(f'ModelConfig "{model_id}" not found in registry. Using generic configuration.')
 
-        return cls(model_id=name, **kwargs)
-
-    @property
-    def name(self):
-        if self.peft_adapter:
-            return self.peft_adapter
-        return self.model_id
+        return cls(model_id=model_id, **kwargs)
 
     def load(
         self,
@@ -106,10 +100,11 @@ class ModelConfig:
             **self.model_kwargs,
             **kwargs,
         }
-        model = model_cls.from_pretrained(self.model_id, **model_kwargs)
-        if self.peft_adapter:
+        model_id = self.model_id if not self.peft_base_id else self.peft_base_id
+        model = model_cls.from_pretrained(model_id, **model_kwargs)
+        if self.peft_base_id:
             from peft import PeftModel
-            model = PeftModel.from_pretrained(model, self.peft_adapter, **self.peft_kwargs)
+            model = PeftModel.from_pretrained(model, self.model_id, **self.peft_kwargs)
         return model
 
     def load_tokenizer(self, **kwargs) -> PreTrainedTokenizerBase:

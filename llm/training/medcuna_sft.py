@@ -39,11 +39,11 @@ LOCAL_RANK = int(os.getenv("LOCAL_RANK", 0))
 GLOBAL_RANK = int(os.getenv("RANK", 0))
 
 MEDCUNA_7B = ModelConfig(
-    BASE_MODEL,
+    os.path.join(settings.LOCAL_MODELS_DIR, NAME),
     tokenizer_kwargs={
         "use_fast": False
     },
-    peft_adapter=os.path.join(settings.LOCAL_MODELS_DIR, NAME),
+    peft_base_id=BASE_MODEL,
 )
 
 

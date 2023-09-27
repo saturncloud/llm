@@ -24,7 +24,20 @@ def chat_cli():
 @click.option("--model-id", help="Chat model ID for prompt formatting.", default=VicunaConfig.model_id, envvar="QA_CHAT_MODEL")
 @click.option("--context-model", help="Model name or path for context embedding", default=DEFAULT_MODEL, envvar="QA_CONTEXT_MODEL")
 @click.option("--rephrase", is_flag=True, help="Rephrase the question with context from previous messages")
-def cmdline_cli(dataset_path: str, dataset_type: Optional[str], index_path: Optional[str], model_id: str, context_model: str, rephrase: bool):
+@click.option("--max-new-tokens", default=256, type=int, help="Max new generated tokens")
+@click.option("--temperature", default=0.7, type=float, help="Logit sampling temperature")
+@click.option("--top-p", default=1.0, type=float, help="Logit sampling Top P")
+def cmdline_cli(
+    dataset_path: str,
+    dataset_type: Optional[str],
+    index_path: Optional[str],
+    model_id: str,
+    context_model: str,
+    rephrase: bool,
+    max_new_tokens: int,
+    temperature: float,
+    top_p: float,
+):
     dataset = load_data(dataset_path, dataset_type)
     if index_path is None:
         _index_path = dataset_path.rsplit(".", 1)[-1] + ".faiss"
@@ -40,19 +53,25 @@ def cmdline_cli(dataset_path: str, dataset_type: Optional[str], index_path: Opti
         qa_session.append_question(input_text)
         search_query = input_text
         if rephrase:
-            search_query = qa_session.rephrase_question(input_text)
+            search_query = qa_session.rephrase_question(
+                input_text, temperature=temperature, top_p=top_p
+            )
         qa_session.search_context(search_query)
 
         prev_output = ""
         print("Answer: ", end="", flush=True)
-        for output_text in qa_session.stream_answer(input_text):
+        for output_text in qa_session.stream_answer(
+            input_text, max_new_tokens=max_new_tokens, temperature=temperature, top_p=top_p
+        ):
             new_output = output_text[len(prev_output):]
             prev_output = output_text
             print(new_output, end="", flush=True)
         print()
 
 
-@chat_cli.group("streamlit", short_help="Run a simple Streamlit QA application", invoke_without_command=True)
+@chat_cli.group(
+    "streamlit", short_help="Run a simple Streamlit QA application", invoke_without_command=True
+)
 @click.pass_context
 def streamlit_cli(ctx):
     if ctx.invoked_subcommand is None:

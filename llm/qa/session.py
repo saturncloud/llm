@@ -82,8 +82,6 @@ class QASession:
 
         gen_kwargs = {
             "stop": self.qa_prompt.stop_strings,
-            "temperature": 0.7,
-            "top_p": 0.9,
             **kwargs,
         }
 
@@ -128,8 +126,6 @@ class QASession:
 
         params = {
             "stop": self.rephrase_prompt.stop_strings,
-            "temperature": 0.7,
-            "top_p": 0.9,
             **kwargs,
         }
         standalone = self.engine.generate(input_text, **params).strip()

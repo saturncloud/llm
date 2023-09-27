@@ -94,7 +94,7 @@ def render_app(qa_session: QASession):
         # Rephrase and search for contexts
         with st.spinner("Searching..."):
             if rephrase_question:
-                search_query = qa_session.rephrase_question(user_input)
+                search_query = qa_session.rephrase_question(user_input, temperature=temperature, top_p=top_p)
             else:
                 search_query = user_input
             st.session_state["search_query"] = search_query

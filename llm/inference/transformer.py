@@ -238,7 +238,7 @@ class LogitsProcessorConfig:
 
     def load(self) -> LogitsProcessorList:
         processors = []
-        if self.temperature != 1.0:
+        if self.temperature != 1.0 and self.temperature != 0.0:
             processors.append(TemperatureLogitsWarper(self.temperature))
         if self.top_p < 1.0:
             processors.append(TopPLogitsWarper(self.top_p))

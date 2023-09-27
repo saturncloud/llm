@@ -42,81 +42,93 @@ def get_qa_session(model_config: ModelConfig, engine: InferenceEngine, vector_st
 
 
 def render_app(qa_session: QASession):
+    st.header("Document Chat", divider="grey")
+
     chat_container = st.container()
-    included: List[bool] = []
 
     clear_convo = st.button("clear conversation")
     if clear_convo:
         # Clear conversation, but keep system prompt in case the
         # user wants to re-query over the previous context.
         qa_session.clear(keep_results=True)
+        query_submitted = False
 
     with st.form(key="input_form", clear_on_submit=True):
         # Collect user input
-        user_input = st.text_area("You:", key="input", height=100)
-        placeholder = st.container()
-        num_contexts = st.number_input(label="Num Contexts", min_value=0, value=3)
-        query_submitted = st.form_submit_button(label="Query")
-
-        rephrase_question = placeholder.checkbox(
-            "Rephrase question with history",
-            key="rephrase_question",
-            value=True,
-            disabled=not (query_submitted or qa_session.has_history),
-        )
-        search_new_context = placeholder.checkbox(
-            "Search new context",
-            key="search_new_context",
-            value=True,
-            disabled=not (query_submitted or qa_session.results),
-        )
-
+        user_input = st.text_area("Query:", key="input", height=100)
+        contexts_only = st.checkbox(label="Contexts only", value=False)
+        query_submitted = st.form_submit_button(label="Submit")
         if query_submitted and not user_input:
             query_submitted = False
 
-    if query_submitted and not clear_convo:
-        # Write user input out to streamlit, then search for contexts
+    with st.sidebar:
+        st.header("Settings")
+
+        with st.form(key="settings_form", clear_on_submit=False):
+            rephrase_question = st.checkbox(
+                "Rephrase question with history",
+                key="rephrase_question",
+                value=True,
+            )
+            search_new_context = st.checkbox(
+                "Search new context",
+                key="search_new_context",
+                value=True,
+            )
+            num_contexts = st.number_input(label="Num Contexts", min_value=0, value=3)
+            st.form_submit_button(label="Apply")
+
+    # Write current chat
+    if query_submitted and not contexts_only:
         qa_session.append_question(user_input)
-        with chat_container:
-            for message in qa_session.conversation.messages:
-                with st.chat_message("user"):
-                    st.write(message.input)
 
-                if message.response is not None:
-                    with st.chat_message("assistant"):
-                        st.write(message.response)
+    with chat_container:
+        for message in qa_session.conversation.messages:
+            chat_bubble("user", message.input)
+            if message.response is not None:
+                chat_bubble("assistant", message.response)
 
+    if query_submitted and (search_new_context or contexts_only):
+        # Rephrase and search for contexts
         with st.spinner("Searching..."):
             if rephrase_question:
                 search_query = qa_session.rephrase_question(user_input)
             else:
                 search_query = user_input
-            if search_new_context:
-                qa_session.search_context(search_query, top_k=num_contexts)
+            st.session_state["search_query"] = search_query
+            qa_session.search_context(search_query, top_k=num_contexts)
 
-
-    if qa_session.results:
-        # Write contexts out to streamlit, with checkboxes to filter what is sent to the LLM
+    # Write contexts out to streamlit, with checkboxes to filter what is sent to the LLM
+    included: List[bool] = []
+    with st.sidebar:
+        st.header("Contexts")
+        if "search_query" in st.session_state:
+            st.caption(st.session_state["search_query"])
         with st.form(key="checklists"):
             for i, doc in enumerate(qa_session.results):
-                include = st.checkbox("include in chat context", key=i, value=True)
+                include = st.checkbox("include in chat context", key=i, value=True, disabled=search_new_context)
                 included.append(include)
                 st.write(doc.page_content)
-                st.write({k: v for k, v in doc.metadata.items() if k != DataFields.EMBEDDING})
+                st.json({k: v for k, v in doc.metadata.items() if k != DataFields.EMBEDDING}, expanded=False)
                 st.divider()
 
-            checklist_submitted = st.form_submit_button(label="Filter")
+            checklist_submitted = st.form_submit_button(label="Filter", disabled=(not qa_session.results))
             if checklist_submitted:
                 filter_contexts(qa_session, included)
 
-    if not clear_convo:
-        if query_submitted:
-            # Stream response from LLM, updating chat window at each step
-            with chat_container, st.chat_message("assistant"):
-                answer = st.text("")
-                # TODO: Handle labeling here and remove it from qa_session
-                for text in qa_session.stream_answer(user_input):
-                    answer.write(text)
+    if query_submitted and not contexts_only:
+        # Stream response from LLM, updating chat window at each step
+        with chat_container:
+            answer = chat_bubble("assistant")
+            for text in qa_session.stream_answer(user_input):
+                answer.write(text)
+
+
+def chat_bubble(role: str, text: str = ""):
+    with st.chat_message(role):
+        text_box = st.text("")
+        text_box.write(text)
+    return text_box
 
 
 def filter_contexts(qa_session: QASession, included: List[bool]):

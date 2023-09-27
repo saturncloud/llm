@@ -4,7 +4,7 @@ import streamlit as st
 from langchain.vectorstores.base import VectorStore
 
 from llm.inference.base import InferenceEngine
-from llm.model_configs import VICUNA_7B, ModelConfig
+from llm.model_configs import ModelConfig, VicunaConfig
 from llm.qa.embedding import DEFAULT_MODEL, QAEmbeddings
 from llm.qa.parser import DataFields
 from llm.qa.session import QASession
@@ -14,7 +14,7 @@ from llm.utils.data import load_data
 QA_DATASET_PATH = os.environ["QA_DATASET_PATH"]
 QA_INDEX_PATH = os.getenv("QA_INDEX_PATH")
 QA_CONTEXT_MODEL = os.getenv("QA_CONTEXT_MODEL", DEFAULT_MODEL)
-QA_CHAT_MODEL = os.getenv("QA_CHAT_MODEL", VICUNA_7B.model_id)
+QA_CHAT_MODEL = os.getenv("QA_CHAT_MODEL", VicunaConfig.model_id)
 
 
 @st.cache_resource

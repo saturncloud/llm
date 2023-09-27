@@ -4,7 +4,8 @@ import sys
 from typing import Optional
 import click
 
-from llm import model_configs, settings
+from llm import settings
+from llm.model_configs import ModelConfig, VicunaConfig
 from llm.qa.embedding import DEFAULT_MODEL, QAEmbeddings
 from llm.qa.session import QASession
 from llm.qa.vector_store import DatasetVectorStore
@@ -20,16 +21,17 @@ def chat_cli():
 @click.argument("dataset-path", required=True, envvar="QA_DATASET_PATH")
 @click.option("--dataset-type", help="Input file type. Defaults to file extension.", default=None, envvar="QA_INPUT_TYPE")
 @click.option("--index-path", help="Path to a pre-built FAISS index over the dataset", default=None, envvar="QA_INDEX_PATH")
+@click.option("--model-id", help="Chat model ID for prompt formatting.", default=VicunaConfig.model_id, envvar="QA_CHAT_MODEL")
 @click.option("--context-model", help="Model name or path for context embedding", default=DEFAULT_MODEL, envvar="QA_CONTEXT_MODEL")
 @click.option("--rephrase", is_flag=True, help="Rephrase the question with context from previous messages")
-def cmdline_cli(dataset_path: str, dataset_type: Optional[str], index_path: Optional[str], context_model: str, rephrase: bool):
+def cmdline_cli(dataset_path: str, dataset_type: Optional[str], index_path: Optional[str], model_id: str, context_model: str, rephrase: bool):
     dataset = load_data(dataset_path, dataset_type)
     if index_path is None:
         _index_path = dataset_path.rsplit(".", 1)[-1] + ".faiss"
         if os.path.isfile(_index_path):
             index_path = _index_path
 
-    model_config = model_configs.VICUNA_7B
+    model_config = ModelConfig.from_registry(model_id)
     vector_store = DatasetVectorStore(dataset, QAEmbeddings(context_model), index_path=index_path)
     qa_session = QASession.from_model_config(model_config, vector_store)
 
@@ -59,7 +61,7 @@ def streamlit_cli(ctx):
 
 
 @streamlit_cli.command("transformers", short_help="Local transformers engine")
-@click.option("--model-id", help="Chat model ID.", default=model_configs.VICUNA_7B.model_id, envvar="QA_CHAT_MODEL")
+@click.option("--model-id", help="Chat model ID.", default=VicunaConfig.model_id, envvar="QA_CHAT_MODEL")
 @click.option("--num-workers", type=int, default=None, help="Number of chat models to run. Defaults to num GPUs")
 @click.option("--dataset", required=True, help="Path to dataset with contexts. Defaults to env QA_DATASET_PATH", envvar="QA_DATASET_PATH")
 @click.option(
@@ -80,7 +82,7 @@ def transformers_backend(model_id: str, num_workers: Optional[int], dataset: str
 
 @streamlit_cli.command("vllm-client", short_help="Remote vLLM engine")
 @click.argument("url")
-@click.option("--model-id", help="Chat model ID for prompt formatting.", default=model_configs.VICUNA_7B.model_id, envvar="QA_CHAT_MODEL")
+@click.option("--model-id", help="Chat model ID for prompt formatting.", default=VicunaConfig.model_id, envvar="QA_CHAT_MODEL")
 @click.option("--dataset", required=True, help="Path to dataset with contexts. Defaults to env QA_DATASET_PATH", envvar="QA_DATASET_PATH")
 @click.option(
     "--index",

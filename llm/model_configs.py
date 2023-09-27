@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, Optional, Tuple, Type, Union
 import torch
 from transformers import (
     AutoModelForCausalLM,
@@ -14,17 +14,9 @@ from transformers import (
     __version__ as TRANSFORMERS_VERSION,
 )
 
-from llm.utils.data import merge_dict
-from llm.prompt import ChatMLFormat, DollyFormat, Llama2Format, Conversation, PromptFormat, RedpajamaFormat, TogetherLlama2Format, VicunaFormat
+from llm.prompt import ChatMLFormat, DollyFormat, Llama2Format, PromptFormat, RedpajamaFormat, TogetherLlama2Format, VicunaFormat
 
-default_model_kwargs = {}
-default_tokenizer_kwargs = {
-    # https://github.com/huggingface/transformers/pull/24565
-    "legacy": False,
-}
-default_conversation_kwargs = {}
-
-_registry: Dict[str, ModelConfig] = {}
+_registry: Dict[str, Type[ModelConfig]] = {}
 
 
 def bnb_quantization() -> BitsAndBytesConfig:
@@ -49,8 +41,8 @@ class ModelConfig:
     Stores model and tokenizer configuration for
     pretrained huggingface models.
     """
-    model_id: str
-    max_length: int = 512
+    model_id: str = ""
+    max_length: int = 2048
     format: PromptFormat = field(default_factory=PromptFormat)
     model_kwargs: Dict[str, Any] = field(default_factory=dict)
     tokenizer_kwargs: Dict[str, Any] = field(default_factory=dict)
@@ -59,27 +51,38 @@ class ModelConfig:
     peft_adapter: Optional[str] = None
     peft_kwargs: Dict[str, Any] = field(default_factory=dict)
 
-    merge_defaults: bool = True
-
     def __post_init__(self):
-        if self.merge_defaults:
-            self.model_kwargs = merge_dict(self.model_kwargs, default_model_kwargs)
-            self.tokenizer_kwargs = merge_dict(self.tokenizer_kwargs, default_tokenizer_kwargs)
-
         self.model_id = trim_model_path(self.model_id)
         if self.peft_adapter:
             self.peft_adapter = trim_model_path(self.peft_adapter)
 
-        _registry[self.name] = self
+    def __init_subclass__(cls) -> None:
+        if cls.peft_adapter:
+            cls.register(trim_model_path(cls.peft_adapter))
+        elif cls.model_id:
+            cls.register(trim_model_path(cls.model_id))
 
     @classmethod
-    def from_registry(cls, name: str) -> ModelConfig:
+    def register(cls, *names: str):
+        """
+        Register additional model_id names/paths for the class
+        """
+        for name in names:
+            _registry[name] = cls
+
+    @classmethod
+    def from_registry(cls, name: str, **kwargs) -> ModelConfig:
+        """
+        Load model config from the registry
+        """
         if name not in _registry:
             name = trim_model_path(name)
         if name in _registry:
-            return _registry[name]
-        logging.warn(f'ModelConfig "{name}" not found in registry. Using generic configuration.')
-        return cls(name)
+            cls = _registry[name]
+        else:
+            logging.warn(f'ModelConfig "{name}" not found in registry. Using generic configuration.')
+
+        return cls(model_id=name, **kwargs)
 
     @property
     def name(self):
@@ -127,84 +130,101 @@ def trim_model_path(model_id: str) -> str:
     return model_id
 
 
-VICUNA_7B = ModelConfig(
+@dataclass
+class VicunaConfig(ModelConfig):
+    model_id: str = "lmsys/vicuna-7b-v1.5"
+    max_length: int = 4096
+    format: PromptFormat = field(default_factory=VicunaFormat)
+
+
+VicunaConfig.register(
     "lmsys/vicuna-7b-v1.5",
-    max_length=4096,
-    format=VicunaFormat(),
-)
-
-VICUNA_13B = ModelConfig(
     "lmsys/vicuna-13b-v1.5",
-    max_length=4096,
-    format=VicunaFormat(),
-)
-
-VICUNA_33B = ModelConfig(
     "lmsys/vicuna-33b-v1.5",
-    max_length=4096,
-    format=VicunaFormat(),
 )
 
-LLAMA2_7B = ModelConfig(
+
+@dataclass
+class Llama2Config(ModelConfig):
+    model_id: str = "meta-llama/Llama-2-7b-hf"
+    max_length: int = 4096
+
+
+Llama2Config.register(
+    "meta-llama/Llama-2-7b-hf",
+    "meta-llama/Llama-2-13b-hf",
+    "meta-llama/Llama-2-70b-hf",
+)
+
+
+@dataclass
+class Llama2ChatConfig(ModelConfig):
+    model_id: str = "meta-llama/Llama-2-7b-chat-hf"
+    max_length: int = 4096
+    format: PromptFormat = field(default_factory=Llama2Format)
+
+
+Llama2ChatConfig.register(
     "meta-llama/Llama-2-7b-chat-hf",
-    max_length=4096,
-    format=Llama2Format(),
-)
-
-LLAMA2_13B = ModelConfig(
     "meta-llama/Llama-2-13b-chat-hf",
-    max_length=4096,
-    format=Llama2Format(),
+    "meta-llama/Llama-2-70b-chat-hf",
 )
 
-LLAMA2_7B_32K = ModelConfig(
-    "togethercomputer/LLaMA-2-7B-32K",
-    max_length=32768,
-    format=TogetherLlama2Format(),
-)
 
-LLAMA2_7B_32K_INSTRUCT = ModelConfig(
-    "togethercomputer/Llama-2-7B-32K-Instruct",
-    max_length=32768,
-    format=TogetherLlama2Format(),
-)
+@dataclass
+class TogetherLlama2Config(ModelConfig):
+    model_id: str = "togethercomputer/LLaMA-2-7B-32K"
+    max_length: int = 32768
 
-REDPAJAMA_7B_INSTRUCT = ModelConfig(
-    "togethercomputer/RedPajama-INCITE-7B-Instruct",
-    format=RedpajamaFormat(),
-)
 
-REDPAJAMA_7B_CHAT = ModelConfig(
-    "togethercomputer/RedPajama-INCITE-7B-Chat",
-    format=RedpajamaFormat(),
-)
+@dataclass
+class TogetherLlama2InstructConfig(ModelConfig):
+    model_id: str = "togethercomputer/LLaMA-2-7B-32K-Instruct"
+    max_length: int = 32768
+    format: PromptFormat = field(default_factory=TogetherLlama2Format)
 
-MPT_7B_INSTRUCT = ModelConfig(
+
+@dataclass
+class RedpajamaInstructConfig(ModelConfig):
+    model_id: str = "togethercomputer/RedPajama-INCITE-7B-Instruct"
+    format: PromptFormat = field(default_factory=RedpajamaFormat)
+
+
+@dataclass
+class RedpajamaChatConfig(ModelConfig):
+    model_id: str = "togethercomputer/RedPajama-INCITE-7B-Chat"
+    format: PromptFormat = field(default_factory=RedpajamaFormat)
+
+
+@dataclass
+class MPTInstructConfig(ModelConfig):
+    model_id: str = "mosaicml/mpt-7b-instruct"
+    format: PromptFormat = field(default_factory=DollyFormat)
+    model_kwargs: Dict[str, Any] = field(default_factory=lambda: {
+        "init_device": "meta",
+        # MPT not yet full supported by Transformers
+        "trust_remote_code": True,
+    })
+
+
+MPTInstructConfig.register(
     "mosaicml/mpt-7b-instruct",
-    format=DollyFormat(),
-    model_kwargs={
+    "mosaicml/mpt-30b-instruct",
+)
+
+
+@dataclass
+class MPTChatConfig(ModelConfig):
+    model_id: str = "mosaicml/mpt-7b-chat"
+    format: PromptFormat = field(default_factory=ChatMLFormat)
+    model_kwargs: Dict[str, Any] = field(default_factory=lambda: {
         "init_device": "meta",
         # MPT not yet full supported by Transformers
         "trust_remote_code": True,
-    },
-)
+    })
 
-MPT_7B_CHAT = ModelConfig(
+
+MPTChatConfig.register(
     "mosaicml/mpt-7b-chat",
-    format=ChatMLFormat(),
-    model_kwargs={
-        "init_device": "meta",
-        # MPT not yet full supported by Transformers
-        "trust_remote_code": True,
-    },
-)
-
-MPT_30B_CHAT = ModelConfig(
     "mosaicml/mpt-30b-chat",
-    format=ChatMLFormat(),
-    model_kwargs={
-        "init_device": "meta",
-        # MPT not yet full supported by Transformers
-        "trust_remote_code": True,
-    },
 )

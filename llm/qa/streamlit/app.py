@@ -42,7 +42,7 @@ def get_qa_session(model_config: ModelConfig, engine: InferenceEngine, vector_st
 
 
 def render_app(qa_session: QASession):
-    st.header("Document Chat", divider="grey")
+    st.header("Document Chat", divider="grey", anchor=False)
 
     chat_container = st.container()
 
@@ -63,19 +63,21 @@ def render_app(qa_session: QASession):
 
     with st.sidebar:
         st.header("Settings")
-
         with st.form(key="settings_form", clear_on_submit=False):
             rephrase_question = st.checkbox(
-                "Rephrase question with history",
+                "Rephrase context query with history",
                 key="rephrase_question",
                 value=True,
             )
             search_new_context = st.checkbox(
-                "Search new context",
+                "Search new contexts on chat",
                 key="search_new_context",
                 value=True,
             )
             num_contexts = st.number_input(label="Num Contexts", min_value=0, value=3)
+            max_new_tokens = st.number_input(label="Max New Tokens", min_value=1, value=256)
+            temperature = st.slider(label="Temperature", min_value=0.0, max_value=1.0, step=0.05, value=0.7)
+            top_p = st.slider(label="Top P", min_value=0.0, max_value=1.0, step=0.05, value=1.0)
             st.form_submit_button(label="Apply")
 
     # Write current chat
@@ -120,7 +122,9 @@ def render_app(qa_session: QASession):
         # Stream response from LLM, updating chat window at each step
         with chat_container:
             answer = chat_bubble("assistant")
-            for text in qa_session.stream_answer(user_input):
+            for text in qa_session.stream_answer(
+                user_input, max_new_tokens=max_new_tokens, temperature=temperature, top_p=top_p
+            ):
                 answer.write(text)
 
 

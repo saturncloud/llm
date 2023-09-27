@@ -30,8 +30,9 @@ class PromptFormat:
     Prompt roles and formatting options to control how messages between a user
     and an AI assistant are rendered.
     """
-    user: Role = field(default_factory=Role)
-    assistant: Role = field(default_factory=Role)
+    # Instruction
+    input: Role = field(default_factory=Role)
+    response: Role = field(default_factory=Role)
     system: Role = field(default_factory=Role)
     contexts: Role = field(default_factory=Role)
     examples: Role = field(default_factory=Role)
@@ -40,9 +41,9 @@ class PromptFormat:
     system_nested: bool = False
     # Strip prefixes/suffixes before returning them as strop strings
     strip_stop_strings: bool = False
-    # Separator between each message
+    # Separator between each message (instruction, response)
     message_separator: str = "\n"
-    # Separator between input components (e.g. contexts)
+    # Separator between instruction components (system, contexts, input)
     content_separator: str = "\n"
     # String added before each message input
     BOS: str = ""
@@ -58,8 +59,8 @@ class PromptFormat:
     @property
     def stop_strings(self) -> List[str]:
         stop_strings = (
-            self.user.stop_strings
-            + self.assistant.stop_strings
+            self.input.stop_strings
+            + self.response.stop_strings
             + self.system.stop_strings
             + self.contexts.stop_strings
             + self.examples.stop_strings
@@ -71,27 +72,27 @@ class PromptFormat:
 
 @dataclass
 class UserAssistantFormat(PromptFormat):
-    user: Role = field(default_factory=lambda: Role("User: "))
-    assistant: Role = field(default_factory=lambda: Role("Assistant: "))
+    input: Role = field(default_factory=lambda: Role("User: "))
+    response: Role = field(default_factory=lambda: Role("Assistant: "))
 
 
 @dataclass
 class RedpajamaFormat(PromptFormat):
-    user: Role = field(default_factory=lambda: Role("<human>: "))
-    assistant: Role = field(default_factory=lambda: Role("<bot>: "))
+    input: Role = field(default_factory=lambda: Role("<human>: "))
+    response: Role = field(default_factory=lambda: Role("<bot>: "))
 
 
 @dataclass
 class VicunaFormat(PromptFormat):
-    user: Role = field(default_factory=lambda: Role("USER: "))
-    assistant: Role = field(default_factory=lambda: Role("ASSISTANT: "))
+    input: Role = field(default_factory=lambda: Role("USER: "))
+    response: Role = field(default_factory=lambda: Role("ASSISTANT: "))
     BOS: str = "<s>"
     EOS: str = "</s>"
 
 
 @dataclass
 class Llama2Format(PromptFormat):
-    user: Role = field(default_factory=lambda: Role(prefix="[INST] ", suffix=" [/INST]"))
+    input: Role = field(default_factory=lambda: Role(prefix="[INST] ", suffix=" [/INST]"))
     system: Role = field(default_factory=lambda: Role(prefix="<<SYS>>\n", suffix="\n<</SYS>>\n\n"))
     system_nested: bool = True
     message_separator: str = ""
@@ -104,7 +105,7 @@ class TogetherLlama2Format(PromptFormat):
     # Simplified version of Llama2 roles used in togethercomputer/Llama-2-7B-32K-Instruct
     # The exact formatting differs a bit from training data and model card, this is a mix of the two
     # that does well for inference.
-    user: Role = field(default_factory=lambda: Role(prefix="[INST]  ", suffix="  [/INST]\n\n"))
+    input: Role = field(default_factory=lambda: Role(prefix="[INST]  ", suffix="  [/INST]\n\n"))
     system_nested: bool = True
     message_separator: str = ""
     # Model tends to generate "[/INST]" with different spacings
@@ -113,15 +114,15 @@ class TogetherLlama2Format(PromptFormat):
 
 @dataclass
 class ChatMLFormat(PromptFormat):
-    user: Role = field(default_factory=lambda: Role(prefix="<|im_start|>user\n", suffix="<|im_end|>"))
-    assistant: Role = field(default_factory=lambda: Role(prefix="<|im_start|>assistant\n", suffix="<|im_end|>"))
+    input: Role = field(default_factory=lambda: Role(prefix="<|im_start|>user\n", suffix="<|im_end|>"))
+    response: Role = field(default_factory=lambda: Role(prefix="<|im_start|>assistant\n", suffix="<|im_end|>"))
     system: Role = field(default_factory=lambda: Role(prefix="<|im_start|>system\n", suffix="<|im_end|>"))
 
 
 @dataclass
 class DollyFormat(PromptFormat):
-    user: Role = field(default_factory=lambda: Role(prefix="\n### Instruction:\n"))
-    assistant: Role = field(default_factory=lambda: Role(prefix="\n### Response:\n"))
+    input: Role = field(default_factory=lambda: Role(prefix="\n### Instruction:\n"))
+    response: Role = field(default_factory=lambda: Role(prefix="\n### Response:\n"))
 
 
 @dataclass
@@ -161,7 +162,7 @@ class Prompt:
         strip: bool = True,
     ) -> str:
         """
-        Render the prompt as a conversation.
+        Render the prompt over a series of messages
         """
         results: List[str] = []
 
@@ -178,7 +179,7 @@ class Prompt:
             if with_system and self.system_message:
                 system_message = self.render_system()
                 if self.format.system_nested:
-                    system_message = self.format.user.render(system_message, with_suffix=False)
+                    system_message = self.format.input.render(system_message, with_suffix=False)
                 return system_message
             return ""
 
@@ -206,9 +207,9 @@ class Prompt:
         with_contexts: bool = True,
     ) -> str:
         """
-        Render a single message round (system, contexts, user, response)
+        Render a single message round (system, contexts, input, response)
         """
-        input_str = self.render_input(
+        input_str = self.render_instruction(
             message.input, message.contexts if with_contexts else None, with_system=with_system
         )
         response_str = self.render_response(message.response, last=last)
@@ -218,9 +219,9 @@ class Prompt:
             final_str = self.format.BOS + final_str
         return final_str
 
-    def render_input(self, text: str, contexts: Optional[List[str]] = None, with_system: bool = True) -> str:
+    def render_instruction(self, text: str, contexts: Optional[List[str]] = None, with_system: bool = True) -> str:
         """
-        Render message input (system, contexts, user)
+        Render message instruction (system, contexts, input)
         """
         inputs: List[str] = []
         system_message = ""
@@ -235,11 +236,11 @@ class Prompt:
             context_str = self.render_contexts(contexts)
             inputs.append(context_str)
 
-        user_str = self.render_user(text)
+        user_str = self.render_input(text)
         inputs.append(user_str)
 
         input_str = self.format.join_contents(inputs)
-        input_str = self.format.user.render(input_str)
+        input_str = self.format.input.render(input_str)
         if system_message:
             # Join system message with user message
             return self.format.join_messages([system_message, input_str])
@@ -269,7 +270,7 @@ class Prompt:
         ])
         return self.format.contexts.render(contexts_str)
 
-    def render_user(self, text: str) -> str:
+    def render_input(self, text: str) -> str:
         """
         Render user input text with prompt template. Role formatting is handled in render_input.
         """
@@ -291,7 +292,7 @@ class Prompt:
                 # Assume null response indicates last message unless specified
                 last = True
             response_partial = self.response_template.format(response="")
-            response_partial = self.format.assistant.render(
+            response_partial = self.format.response.render(
                 response_partial, with_prefix=with_prefix, with_suffix=(with_suffix and not last)
             )
             if not last and self.format.EOS:
@@ -300,7 +301,7 @@ class Prompt:
 
         # Fully formatted response
         response_text = self.response_template.format(response=text)
-        response_text = self.format.assistant.render(
+        response_text = self.format.response.render(
             response_text, with_prefix=with_prefix, with_suffix=with_suffix
         )
         if self.format.EOS:

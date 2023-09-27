@@ -7,7 +7,7 @@ from langchain.vectorstores.base import VectorStore
 import torch
 
 from llm.inference import TransformersEngine, InferenceEngine
-from llm.model_configs import ChatModelConfig, bnb_quantization
+from llm.model_configs import ModelConfig, bnb_quantization
 from llm.prompt import Message, Prompt, Conversation
 from llm.qa.prompts import FewShotQA, StandaloneQuestion
 
@@ -39,7 +39,7 @@ class QASession:
     @classmethod
     def from_model_config(
         cls,
-        model_config: ChatModelConfig,
+        model_config: ModelConfig,
         vector_store: VectorStore,
         engine: Optional[InferenceEngine] = None,
         qa_prompt: Union[Prompt, Type[Prompt]] = FewShotQA,

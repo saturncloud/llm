@@ -5,7 +5,7 @@ import streamlit as st
 import torch
 
 from llm.inference import InferenceEngine, MultiprocessEngine
-from llm.model_configs import ChatModelConfig, ModelConfig, bnb_quantization
+from llm.model_configs import ModelConfig, bnb_quantization
 from llm.qa.streamlit.app import QA_CHAT_MODEL, get_qa_session, get_vector_store, render_app
 
 
@@ -33,7 +33,7 @@ if __name__ == "__main__":
     parser.add_argument("-n", "--num-workers", help="Number of chat models to run. Defaults to num GPUs.")
     args = parser.parse_args()
 
-    model_config = ChatModelConfig.from_registry(args.model_id)
+    model_config = ModelConfig.from_registry(args.model_id)
     engine = get_inference_engine(model_config, num_workers=args.num_workers)
 
     vector_store = get_vector_store()

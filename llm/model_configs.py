@@ -118,24 +118,6 @@ class ModelConfig:
         return tokenizer_cls.from_pretrained(self.model_id, **tokenizer_kwargs)
 
 
-@dataclass
-class ChatModelConfig(ModelConfig):
-    """
-    Stores model, tokenizer, and conversation configuration for
-    pretrained huggingface models.
-    """
-    max_length: int = 2048
-    conversation_kwargs: Dict[str, Any] = field(default_factory=dict)
-
-    def __post_init__(self):
-        if self.merge_defaults:
-            super().__post_init__()
-            self.conversation_kwargs = merge_dict(self.conversation_kwargs, default_conversation_kwargs)
-
-    def new_conversation(self) -> Conversation:
-        return Conversation(**self.conversation_kwargs)
-
-
 def trim_model_path(model_id: str) -> str:
     """
     Strip trailing / from path-based model IDs for consistency.
@@ -145,59 +127,59 @@ def trim_model_path(model_id: str) -> str:
     return model_id
 
 
-VICUNA_7B = ChatModelConfig(
+VICUNA_7B = ModelConfig(
     "lmsys/vicuna-7b-v1.5",
     max_length=4096,
     format=VicunaFormat(),
 )
 
-VICUNA_13B = ChatModelConfig(
+VICUNA_13B = ModelConfig(
     "lmsys/vicuna-13b-v1.5",
     max_length=4096,
     format=VicunaFormat(),
 )
 
-VICUNA_33B = ChatModelConfig(
+VICUNA_33B = ModelConfig(
     "lmsys/vicuna-33b-v1.5",
     max_length=4096,
     format=VicunaFormat(),
 )
 
-LLAMA2_7B = ChatModelConfig(
+LLAMA2_7B = ModelConfig(
     "meta-llama/Llama-2-7b-chat-hf",
     max_length=4096,
     format=Llama2Format(),
 )
 
-LLAMA2_13B = ChatModelConfig(
+LLAMA2_13B = ModelConfig(
     "meta-llama/Llama-2-13b-chat-hf",
     max_length=4096,
     format=Llama2Format(),
 )
 
-LLAMA2_7B_32K = ChatModelConfig(
+LLAMA2_7B_32K = ModelConfig(
     "togethercomputer/LLaMA-2-7B-32K",
     max_length=32768,
     format=TogetherLlama2Format(),
 )
 
-LLAMA2_7B_32K_INSTRUCT = ChatModelConfig(
+LLAMA2_7B_32K_INSTRUCT = ModelConfig(
     "togethercomputer/Llama-2-7B-32K-Instruct",
     max_length=32768,
     format=TogetherLlama2Format(),
 )
 
-REDPAJAMA_7B_INSTRUCT = ChatModelConfig(
+REDPAJAMA_7B_INSTRUCT = ModelConfig(
     "togethercomputer/RedPajama-INCITE-7B-Instruct",
     format=RedpajamaFormat(),
 )
 
-REDPAJAMA_7B_CHAT = ChatModelConfig(
+REDPAJAMA_7B_CHAT = ModelConfig(
     "togethercomputer/RedPajama-INCITE-7B-Chat",
     format=RedpajamaFormat(),
 )
 
-MPT_7B_INSTRUCT = ChatModelConfig(
+MPT_7B_INSTRUCT = ModelConfig(
     "mosaicml/mpt-7b-instruct",
     format=DollyFormat(),
     model_kwargs={
@@ -207,7 +189,7 @@ MPT_7B_INSTRUCT = ChatModelConfig(
     },
 )
 
-MPT_7B_CHAT = ChatModelConfig(
+MPT_7B_CHAT = ModelConfig(
     "mosaicml/mpt-7b-chat",
     format=ChatMLFormat(),
     model_kwargs={
@@ -217,7 +199,7 @@ MPT_7B_CHAT = ChatModelConfig(
     },
 )
 
-MPT_30B_CHAT = ChatModelConfig(
+MPT_30B_CHAT = ModelConfig(
     "mosaicml/mpt-30b-chat",
     format=ChatMLFormat(),
     model_kwargs={

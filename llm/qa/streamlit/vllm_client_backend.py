@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 import streamlit as st
 
 from llm.inference import VLLMClient
-from llm.model_configs import ChatModelConfig
+from llm.model_configs import ModelConfig
 from llm.qa.streamlit.app import QA_CHAT_MODEL, get_qa_session, get_vector_store, render_app
 
 
@@ -43,7 +43,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    model_config = ChatModelConfig.from_registry(args.model_id)
+    model_config = ModelConfig.from_registry(args.model_id)
     engine = VLLMClient(args.url, headers=headers(args.url))
     vector_store = get_vector_store()
     qa_session = get_qa_session(model_config, engine, vector_store)

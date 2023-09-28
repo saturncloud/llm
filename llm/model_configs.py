@@ -117,7 +117,8 @@ class ModelConfig:
             **self.tokenizer_kwargs,
             **kwargs,
         }
-        return tokenizer_cls.from_pretrained(self.model_id, **tokenizer_kwargs)
+        model_id = self.model_id if not self.peft_base_id else self.peft_base_id
+        return tokenizer_cls.from_pretrained(model_id, **tokenizer_kwargs)
 
 
 def trim_model_path(model_id: str) -> str:

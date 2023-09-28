@@ -14,7 +14,7 @@ from peft.utils import get_peft_model_state_dict
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, DataCollatorForLanguageModeling, PreTrainedTokenizerBase, Trainer, TrainingArguments
 
 from llm import settings
-from llm.model_configs import ChatModelConfig
+from llm.model_configs import ModelConfig
 from llm.training.data import LazySupervisedFineTuning, process_pubmed_qa
 
 
@@ -38,12 +38,12 @@ WORLD_SIZE = int(os.getenv("WORLD_SIZE", 1))
 LOCAL_RANK = int(os.getenv("LOCAL_RANK", 0))
 GLOBAL_RANK = int(os.getenv("RANK", 0))
 
-MEDCUNA_7B = ChatModelConfig(
-    BASE_MODEL,
+MEDCUNA_7B = ModelConfig(
+    os.path.join(settings.LOCAL_MODELS_DIR, NAME),
     tokenizer_kwargs={
         "use_fast": False
     },
-    peft_adapter=os.path.join(settings.LOCAL_MODELS_DIR, NAME),
+    peft_base_id=BASE_MODEL,
 )
 
 

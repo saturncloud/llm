@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from queue import Queue
 from multiprocessing import Pipe, Process, set_start_method
-from typing import Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 import torch
 
@@ -25,7 +25,7 @@ class MultiprocessEngine(InferenceEngine):
             self.queue.put(worker)
 
     @classmethod
-    def from_model_config(cls, model_config: ModelConfig, num_workers: Optional[int] = None, wait: bool = True) -> MultiprocessEngine:
+    def from_model_config(cls, model_config: ModelConfig, num_workers: Optional[int] = None, wait: bool = True, **kwargs) -> MultiprocessEngine:
         # Required for CUDA
         set_start_method("spawn")
 
@@ -40,7 +40,7 @@ class MultiprocessEngine(InferenceEngine):
                 None,
                 cls._transformers_worker,
                 args=[worker, model_config, i],
-                kwargs={"signal_ready": wait},
+                kwargs={"signal_ready": wait, **kwargs},
                 daemon=True,
             )
             watch_proc.start()
@@ -54,8 +54,8 @@ class MultiprocessEngine(InferenceEngine):
         return cls(workers)
 
     @staticmethod
-    def _transformers_worker(pipe: WorkerPipe, model_config: ModelConfig, local_rank: int, signal_ready: bool = False):
-        engine = TransformersEngine.from_model_config(model_config, device_map={"": local_rank})
+    def _transformers_worker(pipe: WorkerPipe, model_config: ModelConfig, local_rank: int, signal_ready: bool = False, **kwargs):
+        engine = TransformersEngine.from_model_config(model_config, device_map={"": local_rank}, **kwargs)
         if signal_ready:
             pipe.send_response(None)
         while True:
@@ -105,6 +105,17 @@ class StreamRequest:
         self.prompt = prompt
         self.kwargs = kwargs
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "prompt": self.prompt,
+            **self.kwargs,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> StreamRequest:
+        return cls(**data)
+
+
 
 class WorkerPipe:
     """
@@ -119,14 +130,15 @@ class WorkerPipe:
 
     ### Main proc methods ####
     def send_request(self, request: StreamRequest):
-        self.parent_conn.send(request)
+        # Send as dict to make pickling more reliable
+        self.parent_conn.send(request.to_dict())
 
     def get_response(self) -> Optional[str]:
         return self.parent_conn.recv()
 
     ### Worker methods ####
     def get_request(self) -> StreamRequest:
-        return self.child_conn.recv()
+        return StreamRequest.from_dict(self.child_conn.recv())
 
     def send_response(self, response: Optional[str]):
         self.child_conn.send(response)

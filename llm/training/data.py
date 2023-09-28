@@ -4,7 +4,8 @@ import torch
 from transformers import PreTrainedTokenizerBase
 from datasets import Dataset
 
-from llm.qa.prompts import ZERO_SHOT
+from llm.prompt import Message, PromptFormat, VicunaFormat
+from llm.qa.prompts import ZeroShotQA
 
 IGNORE_TOKEN_ID = -100
 
@@ -18,7 +19,7 @@ class LazySupervisedFineTuning(torch.utils.data.Dataset):
         self,
         raw_data: Dataset,
         tokenizer: PreTrainedTokenizerBase,
-        process_data: Callable[[Dict[str, Any]], Dict[str, Any]],
+        process_data: Callable[[Dict[str, Any], PreTrainedTokenizerBase], Dict[str, Any]],
     ):
         super().__init__()
         self.raw_data = raw_data
@@ -41,19 +42,19 @@ class LazySupervisedFineTuning(torch.utils.data.Dataset):
 def process_pubmed_qa(
     qa_example: Dict[str, Any],
     tokenizer: PreTrainedTokenizerBase,
+    format: PromptFormat = VicunaFormat(),
 ) -> Dict:
     """
-    Apply a ZERO_SHOT template on a PubmedQA example,
+    Apply a ZeroShotQA template on a PubmedQA example,
     tokenizes and formats the fields for supervised fine-tuning.
     """
-    roles = ["Question: ", "Answer: "]
+    format = VicunaFormat()
     context: Dict[str, Any] = qa_example["context"]
     question: str = qa_example["question"]
     answer: str = qa_example["long_answer"]
+    message = Message(question, answer, contexts=context["contexts"])
 
-    prompt = ZERO_SHOT.render(
-        context["contexts"], roles=roles, question=question, answer=answer
-    )
+    prompt = ZeroShotQA(format=format).render([message])
 
     # Tokenize conversations
     input_ids: torch.Tensor = tokenizer(
@@ -67,7 +68,7 @@ def process_pubmed_qa(
 
     # Mask targets. Only want to train on responses to the questions, not on how
     # to generate questions/contexts.
-    sep = f"\n{roles[1]} "
+    sep = format.user.prefix
     split = prompt.split(sep)
     assert len(split) == 2
     split[0] += sep

@@ -52,13 +52,18 @@ class TransformersEngine(InferenceEngine):
                 stop_token_ids = []
 
         len_prompt = len(prompt)
-        input_ids = self.tokenizer(prompt).input_ids
+        if self.tokenizer.bos_token_id is not None:
+            add_special_tokens = not prompt.startswith(self.tokenizer.bos_token)
+        else:
+            add_special_tokens = True
+
+        input_ids = self.tokenizer(prompt, add_special_tokens=add_special_tokens).input_ids
         output_ids = list(input_ids)
 
         if self.model.config.is_encoder_decoder:
             max_src_len = self.max_length
         else:
-            max_src_len = self.max_length - max_new_tokens - 8
+            max_src_len = self.max_length - max_new_tokens - 1
         input_ids = input_ids[-max_src_len:]
         input_echo_len = len(input_ids)
 
@@ -233,7 +238,7 @@ class LogitsProcessorConfig:
 
     def load(self) -> LogitsProcessorList:
         processors = []
-        if self.temperature != 1.0:
+        if self.temperature != 1.0 and self.temperature != 0.0:
             processors.append(TemperatureLogitsWarper(self.temperature))
         if self.top_p < 1.0:
             processors.append(TopPLogitsWarper(self.top_p))

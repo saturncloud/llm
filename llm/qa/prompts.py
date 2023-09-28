@@ -11,6 +11,7 @@ class ZeroShotQA(Prompt):
     system_message: str = "Given the following contexts and a question, create a final answer. Only use the given context to arrive at your answer. If you don't know the answer, just say that you don't know. Don't make up an answer."
     context_template: str = "Context: {text}"
     input_template: str = "Question: {text}"
+    response_template: str = "Answer: {text}"
 
 
 @dataclass

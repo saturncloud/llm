@@ -161,7 +161,8 @@ class Prompt:
         strip: bool = True,
     ) -> str:
         """
-        Render the prompt over a series of messages
+        Render the prompt over multiple message rounds
+        Used for conversations or packed training examples
         """
         results: List[str] = []
 
@@ -178,7 +179,7 @@ class Prompt:
             if with_system and self.system_message:
                 system_message = self.render_system()
                 if self.format.system_nested:
-                    system_message = self.format.input.render(system_message, with_suffix=False)
+                    system_message = self.format.input.render(system_message)
                 return system_message
             return ""
 
@@ -286,10 +287,11 @@ class Prompt:
     def render_system(self) -> str:
         return self.format.system.render(self.system_message)
 
-    def render_examples(self, with_system: bool = True, with_contexts: bool = True) -> str:
-        return self.render(
-            self.examples, with_system=with_system, with_contexts=with_contexts, with_examples=False
+    def render_examples(self, examples: Optional[List[Message]] = None, with_system: bool = True, with_contexts: bool = True) -> str:
+        examples_str = self.render(
+            examples or self.examples, with_system=with_system, with_contexts=with_contexts, with_examples=False
         )
+        return self.format.examples.render(examples_str)
 
     def render_contexts(self, contexts: List[str]) -> str:
         contexts_str = self.format.join_contents([

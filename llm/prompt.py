@@ -151,8 +151,9 @@ class Prompt:
     format: PromptFormat = field(default_factory=PromptFormat)
 
     # Templates are applied before role formatting
+    text_key: str = "text"
     input_template: str = "{text}"
-    context_template: str = "{text}"
+    context_template: str = "{text}"  # Also supports {index}
     response_template: str = "{text}"
 
     @classmethod
@@ -280,16 +281,17 @@ class Prompt:
             if last is None:
                 # Assume null response indicates last message unless specified
                 last = True
-            response_partial = self.response_str("")
+            with_suffix = with_suffix and not last
+            response_partial = self.response_str("", with_prefix=with_prefix, with_suffix=with_suffix)
             response_partial = self.format.response.render(
-                response_partial, with_prefix=with_prefix, with_suffix=(with_suffix and not last)
+                response_partial, with_prefix=with_prefix, with_suffix=with_suffix
             )
             if not last and self.format.EOS:
                 response_partial += self.format.EOS
             return response_partial
 
         # Fully formatted response
-        response_str = self.response_str(text)
+        response_str = self.response_str(text, with_prefix=with_prefix, with_suffix=with_suffix)
         response_str = self.format.response.render(
             response_str, with_prefix=with_prefix, with_suffix=with_suffix
         )
@@ -314,13 +316,24 @@ class Prompt:
         return self.format.contexts.render(contexts_str)
 
     def input_str(self, text: str, **kwargs) -> str:
-        return self.input_template.format_map({"text": text, **kwargs})
+        return self.input_template.format_map({self.text_key: text, **kwargs})
 
     def context_str(self, text: str, **kwargs) -> str:
-        return self.context_template.format_map({"text": text, **kwargs})
+        return self.context_template.format_map({self.text_key: text, **kwargs})
 
-    def response_str(self, text: str, **kwargs) -> str:
-        return self.response_template.format_map({"text": text, **kwargs})
+    def response_str(self, text: str, with_prefix: bool = True, with_suffix: bool = True, **kwargs) -> str:
+        # Response template has to be handled specially since it may be incomplete
+        template = self.response_template
+        if not with_prefix or not with_suffix:
+            split_key = "{" + self.text_key + "}"
+            split = template.split(split_key)
+            if not with_prefix:
+                split[0] = ""
+            if not with_suffix:
+                split[-1] = ""
+            template = split_key.join(split)
+
+        return template.format_map({self.text_key: text, **kwargs})
 
 
 @dataclass

@@ -10,8 +10,11 @@ if TYPE_CHECKING:
 class Role:
     prefix: str = ""
     suffix: str = ""
+    strip_text: bool = True
 
     def render(self, text: str, with_prefix: bool = True, with_suffix: bool = True) -> str:
+        if self.strip_text:
+            text = text.strip()
         if with_prefix:
             text = f"{self.prefix}{text}"
         if with_suffix:

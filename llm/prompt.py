@@ -139,11 +139,9 @@ class Prompt:
     examples: List[Message] = field(default_factory=list)
     format: PromptFormat = field(default_factory=PromptFormat)
 
-    # Applies to message input string separate from contexts
+    # Templates are applied before role formatting
     input_template: str = "{text}"
-    # Applies to individual contexts. May also reference {index}
     context_template: str = "{text}"
-    # Applies to previous responses, and appended with "" to prompt the next response
     response_template: str = "{text}"
 
     @classmethod

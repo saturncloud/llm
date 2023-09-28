@@ -97,4 +97,4 @@ class StandaloneQuestion(Prompt):
         messages: List[Message] = []
         for question, answer in zip(contexts[::2], contexts[1::2]):
             messages.append(Message(question, answer))
-        return self.context_prompt.render(messages, strip=False)
+        return super().render_contexts([self.context_prompt.render(messages, strip=False)])

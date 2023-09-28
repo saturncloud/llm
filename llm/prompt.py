@@ -30,15 +30,16 @@ class PromptFormat:
     Prompt roles and formatting options to control how messages between a user
     and an AI assistant are rendered.
     """
-    # Instruction
     input: Role = field(default_factory=Role)
     response: Role = field(default_factory=Role)
     system: Role = field(default_factory=Role)
     contexts: Role = field(default_factory=Role)
     examples: Role = field(default_factory=Role)
 
-    # System message nested within the first user message (Llama2 format)
+    # Nested roles are wrapped within the input role
     system_nested: bool = False
+    contexts_nested: bool = True
+
     # Strip prefixes/suffixes before returning them as strop strings
     strip_stop_strings: bool = False
     # Separator between each message (instruction, response)
@@ -139,11 +140,11 @@ class Prompt:
     format: PromptFormat = field(default_factory=PromptFormat)
 
     # Applies to message input string separate from contexts
-    input_template: str = "{input}"
-    # Applies to individual contexts
-    context_template: str = "{context}"
+    input_template: str = "{text}"
+    # Applies to individual contexts. May also reference {index}
+    context_template: str = "{text}"
     # Applies to previous responses, and appended with "" to prompt the next response
-    response_template: str = "{response}"
+    response_template: str = "{text}"
 
     @classmethod
     def from_model_config(cls, model_config: ModelConfig, **kwargs):
@@ -210,7 +211,7 @@ class Prompt:
         Render a single message round (system, contexts, input, response)
         """
         input_str = self.render_instruction(
-            message.input, message.contexts if with_contexts else None, with_system=with_system
+            message.input, message.contexts, with_system=with_system, with_contexts=with_contexts
         )
         response_str = self.render_response(message.response, last=last)
 
@@ -219,10 +220,17 @@ class Prompt:
             final_str = self.format.BOS + final_str
         return final_str
 
-    def render_instruction(self, text: str, contexts: Optional[List[str]] = None, with_system: bool = True) -> str:
+    def render_instruction(
+        self,
+        text: str,
+        contexts: Optional[List[str]] = None,
+        with_system: bool = True,
+        with_contexts: bool = True,
+    ) -> str:
         """
-        Render message instruction (system, contexts, input)
+        Render instruction components (system, contexts, input)
         """
+        instruction: List[str] = []
         inputs: List[str] = []
         system_message = ""
         if with_system and self.system_message:
@@ -230,51 +238,23 @@ class Prompt:
             if self.format.system_nested:
                 # System message nested within input formatting (e.g. Llama2)
                 inputs.append(system_message)
-                system_message = ""
+            else:
+                instruction.append(system_message)
 
-        if contexts:
-            context_str = self.render_contexts(contexts)
-            inputs.append(context_str)
+        if with_contexts and contexts:
+            contexts_str = self.render_contexts(contexts)
+            if self.format.contexts_nested:
+                inputs.append(contexts_str)
+            else:
+                instruction.append(contexts_str)
 
-        user_str = self.render_input(text)
-        inputs.append(user_str)
+        input_str = self.input_str(text)
+        inputs.append(input_str)
 
         input_str = self.format.join_contents(inputs)
         input_str = self.format.input.render(input_str)
-        if system_message:
-            # Join system message with user message
-            return self.format.join_messages([system_message, input_str])
-        return input_str
-
-    def render_system(self) -> str:
-        """
-        Render system message with role formatting
-        """
-        return self.format.system.render(self.system_message)
-
-    def render_examples(self, with_system: bool = True, with_contexts: bool = True) -> str:
-        """
-        Render example messages from the prompt
-        """
-        return self.render(
-            self.examples, with_system=with_system, with_contexts=with_contexts, with_examples=False
-        )
-
-    def render_contexts(self, contexts: List[str]) -> str:
-        """
-        Render message contexts with prompt template and role formatting
-        """
-        contexts_str = self.format.join_contents([
-            self.context_template.format_map({"context": context, "index": i})
-            for i, context in enumerate(contexts)
-        ])
-        return self.format.contexts.render(contexts_str)
-
-    def render_input(self, text: str) -> str:
-        """
-        Render user input text with prompt template. Role formatting is handled in render_input.
-        """
-        return self.input_template.format(input=text)
+        instruction.append(input_str)
+        return self.format.join_messages(instruction)
 
     def render_response(
         self,
@@ -283,15 +263,12 @@ class Prompt:
         with_prefix: bool = True,
         with_suffix: bool = True,
     ) -> str:
-        """
-        Render assistant response text with prompt template and role formatting
-        """
         if text is None:
             # Empty response.
             if last is None:
                 # Assume null response indicates last message unless specified
                 last = True
-            response_partial = self.response_template.format(response="")
+            response_partial = self.response_str("")
             response_partial = self.format.response.render(
                 response_partial, with_prefix=with_prefix, with_suffix=(with_suffix and not last)
             )
@@ -300,13 +277,37 @@ class Prompt:
             return response_partial
 
         # Fully formatted response
-        response_text = self.response_template.format(response=text)
-        response_text = self.format.response.render(
-            response_text, with_prefix=with_prefix, with_suffix=with_suffix
+        response_str = self.response_str(text)
+        response_str = self.format.response.render(
+            response_str, with_prefix=with_prefix, with_suffix=with_suffix
         )
         if self.format.EOS:
-            response_text += self.format.EOS
-        return response_text
+            response_str += self.format.EOS
+        return response_str
+
+    def render_system(self) -> str:
+        return self.format.system.render(self.system_message)
+
+    def render_examples(self, with_system: bool = True, with_contexts: bool = True) -> str:
+        return self.render(
+            self.examples, with_system=with_system, with_contexts=with_contexts, with_examples=False
+        )
+
+    def render_contexts(self, contexts: List[str]) -> str:
+        contexts_str = self.format.join_contents([
+            self.context_str(context, index=i)
+            for i, context in enumerate(contexts)
+        ])
+        return self.format.contexts.render(contexts_str)
+
+    def input_str(self, text: str, **kwargs) -> str:
+        return self.input_template.format_map({"text": text, **kwargs})
+
+    def context_str(self, text: str, **kwargs) -> str:
+        return self.context_template.format_map({"text": text, **kwargs})
+
+    def response_str(self, text: str, **kwargs) -> str:
+        return self.response_template.format_map({"text": text, **kwargs})
 
 
 @dataclass

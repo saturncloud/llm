@@ -10,8 +10,11 @@ if TYPE_CHECKING:
 class Role:
     prefix: str = ""
     suffix: str = ""
+    strip_text: bool = True
 
     def render(self, text: str, with_prefix: bool = True, with_suffix: bool = True) -> str:
+        if self.strip_text:
+            text = text.strip()
         if with_prefix:
             text = f"{self.prefix}{text}"
         if with_suffix:
@@ -37,25 +40,25 @@ class PromptFormat:
     examples: Role = field(default_factory=Role)
 
     # Nested roles are wrapped within the input role
-    system_nested: bool = False
-    contexts_nested: bool = True
+    nested_system: bool = False
+    nested_contexts: bool = True
 
     # Strip prefixes/suffixes before returning them as strop strings
-    strip_stop_strings: bool = False
-    # Separator between each message (instruction, response)
-    message_separator: str = "\n"
-    # Separator between instruction components (system, contexts, input)
+    strip_stop_strings: bool = True
+    # Separator between roles
+    role_separator: str = "\n"
+    # Separator between contents of a role (e.g. contexts and nested components of the input role)
     content_separator: str = "\n"
     # String added before each message input
     BOS: str = ""
     # String added after each message response
     EOS: str = ""
 
-    def join_messages(self, texts: Iterable[str]) -> str:
-        return self.message_separator.join(texts)
+    def join_roles(self, texts: Iterable[str]) -> str:
+        return self.role_separator.join(texts)
 
-    def join_contents(self, contents: Iterable[str]) -> str:
-        return self.content_separator.join(contents)
+    def join_contents(self, texts: Iterable[str]) -> str:
+        return self.content_separator.join(texts)
 
     @property
     def stop_strings(self) -> List[str]:
@@ -93,24 +96,32 @@ class VicunaFormat(PromptFormat):
 
 @dataclass
 class Llama2Format(PromptFormat):
+    """
+    <s>[INST] <<SYS>>
+    {system_message}
+    <</SYS>>
+
+    {input} [/INST] {response} </s>
+    """
     input: Role = field(default_factory=lambda: Role(prefix="[INST] ", suffix=" [/INST]"))
     system: Role = field(default_factory=lambda: Role(prefix="<<SYS>>\n", suffix="\n<</SYS>>\n\n"))
-    system_nested: bool = True
-    message_separator: str = ""
+    response: Role = field(default_factory=lambda: Role(prefix=" ", suffix=" "))
+    nested_system: bool = True
+    role_separator: str = ""
     BOS: str = "<s>"
     EOS: str = "</s>"
 
 
 @dataclass
 class TogetherLlama2Format(PromptFormat):
-    # Simplified version of Llama2 roles used in togethercomputer/Llama-2-7B-32K-Instruct
-    # The exact formatting differs a bit from training data and model card, this is a mix of the two
-    # that does well for inference.
+    """
+    Simplified version of Llama2 roles used in togethercomputer/Llama-2-7B-32K-Instruct
+    The exact formatting differs a bit from training data and model card, this is a mix of the two
+    that does well for inference.
+    """
     input: Role = field(default_factory=lambda: Role(prefix="[INST]  ", suffix="  [/INST]\n\n"))
-    system_nested: bool = True
-    message_separator: str = ""
-    # Model tends to generate "[/INST]" with different spacings
-    strip_stop_strings: bool = True
+    nested_system: bool = True
+    role_separator: str = ""
 
 
 @dataclass
@@ -178,7 +189,7 @@ class Prompt:
             # No messages, and no examples. Return system message.
             if with_system and self.system_message:
                 system_message = self.render_system()
-                if self.format.system_nested:
+                if self.format.nested_system:
                     system_message = self.format.input.render(system_message)
                 return system_message
             return ""
@@ -194,7 +205,7 @@ class Prompt:
             )
             results.append(message_str)
 
-        final_str = self.format.join_messages(results)
+        final_str = self.format.join_roles(results)
         if strip:
             return final_str.strip()
         return final_str
@@ -209,15 +220,11 @@ class Prompt:
         """
         Render a single message round (system, contexts, input, response)
         """
-        input_str = self.render_instruction(
+        instruction_str = self.render_instruction(
             message.input, message.contexts, with_system=with_system, with_contexts=with_contexts
         )
         response_str = self.render_response(message.response, last=last)
-
-        final_str = self.format.join_messages([input_str, response_str])
-        if self.format.BOS:
-            final_str = self.format.BOS + final_str
-        return final_str
+        return self.format.join_roles([instruction_str, response_str])
 
     def render_instruction(
         self,
@@ -230,30 +237,36 @@ class Prompt:
         Render instruction components (system, contexts, input)
         """
         instruction: List[str] = []
-        inputs: List[str] = []
+        nested: List[str] = []
         system_message = ""
         if with_system and self.system_message:
             system_message = self.render_system()
-            if self.format.system_nested:
+            if self.format.nested_system:
                 # System message nested within input formatting (e.g. Llama2)
-                inputs.append(system_message)
+                nested.append(system_message)
             else:
                 instruction.append(system_message)
 
         if with_contexts and contexts:
             contexts_str = self.render_contexts(contexts)
-            if self.format.contexts_nested:
-                inputs.append(contexts_str)
+            if self.format.nested_contexts:
+                nested.append(contexts_str)
             else:
                 instruction.append(contexts_str)
 
         input_str = self.input_str(text)
-        inputs.append(input_str)
-
-        input_str = self.format.join_contents(inputs)
+        if nested:
+            # Join nested roles together, then join with input content
+            nested_str = self.format.join_roles(nested)
+            input_str = self.format.join_contents([nested_str, input_str])
         input_str = self.format.input.render(input_str)
+
+        # Join remaining instruction roles and prepend BOS
         instruction.append(input_str)
-        return self.format.join_messages(instruction)
+        instruction_str = self.format.join_roles(instruction)
+        if self.format.BOS:
+            instruction_str = self.format.BOS + instruction_str
+        return instruction_str
 
     def render_response(
         self,

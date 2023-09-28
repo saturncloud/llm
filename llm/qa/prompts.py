@@ -87,7 +87,7 @@ class StandaloneQuestion(Prompt):
         # Sometimes models will generate an "Answer: ..." after the standalone question.
         # Use the context response template as an additional stop string to prevent this.
         stop_strings = super().stop_strings
-        answer_label = self.context_prompt.response_template.format(response="")
+        answer_label = self.context_prompt.response_str("")
         if answer_label.strip():
             stop_strings.append(answer_label)
         return stop_strings

@@ -41,11 +41,15 @@ def get_qa_session(model_config: ModelConfig, engine: InferenceEngine, vector_st
     return st.session_state["qa_session"]
 
 
-def render_app(qa_session: QASession):
+def render_app(
+    qa_session: QASession,
+    temperature: float = 0.7,
+    top_p: float = 0.9,
+    max_new_tokens: int = 256,
+    num_contexts: int = 3,
+):
     st.header("Document Chat", divider="grey", anchor=False)
-
     chat_container = st.container()
-
     clear_convo = st.button("clear conversation")
     if clear_convo:
         # Clear conversation, but keep system prompt in case the
@@ -74,10 +78,10 @@ def render_app(qa_session: QASession):
                 key="search_new_context",
                 value=True,
             )
-            num_contexts = st.number_input(label="Num Contexts", min_value=0, value=3)
-            max_new_tokens = st.number_input(label="Max New Tokens", min_value=1, value=256)
-            temperature = st.slider(label="Temperature", min_value=0.0, max_value=1.0, step=0.05, value=0.7)
-            top_p = st.slider(label="Top P", min_value=0.0, max_value=1.0, step=0.05, value=1.0)
+            num_contexts = st.number_input(label="Num Contexts", min_value=0, value=num_contexts)
+            max_new_tokens = st.number_input(label="Max New Tokens", min_value=1, value=max_new_tokens)
+            temperature = st.slider(label="Temperature", min_value=0.0, max_value=1.0, step=0.05, value=temperature)
+            top_p = st.slider(label="Top P", min_value=0.0, max_value=1.0, step=0.05, value=top_p)
             st.form_submit_button(label="Apply")
 
     # Write current chat

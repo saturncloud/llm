@@ -39,4 +39,8 @@ if __name__ == "__main__":
     vector_store = get_vector_store()
     qa_session = get_qa_session(model_config, engine, vector_store, debug=True)
 
-    render_app(qa_session)
+    kwargs = {}
+    if model_config.max_length > 2048:
+        # Expanded defaults for long context models
+        kwargs["max_new_tokens"] = 512
+    render_app(qa_session, **kwargs)

@@ -53,6 +53,7 @@ class ModelConfig:
     tokenizer_cls: Optional[Type[PreTrainedTokenizerBase]] = None
     peft_base_id: Optional[str] = None
     peft_kwargs: Dict[str, Any] = field(default_factory=dict)
+    default_lora_config: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         self.model_id = trim_model_path(self.model_id)
@@ -134,7 +135,14 @@ class VicunaConfig(ModelConfig):
     model_id: str = "lmsys/vicuna-7b-v1.5"
     max_length: int = 4096
     format: PromptFormat = field(default_factory=VicunaFormat)
-
+    default_lora_config =  dict(
+        r=8,
+        lora_alpha=32,
+        lora_dropout=0.05,
+        target_modules=["q_proj", "v_proj"],
+        task_type="CAUSAL_LM",
+        inference_mode=False,
+    )
 
 VicunaConfig.register(
     "lmsys/vicuna-7b-v1.5",
@@ -147,7 +155,14 @@ VicunaConfig.register(
 class Llama2Config(ModelConfig):
     model_id: str = "meta-llama/Llama-2-7b-hf"
     max_length: int = 4096
-
+    default_lora_config =  dict(
+        r=8,
+        lora_alpha=32,
+        lora_dropout=0.05,
+        target_modules=["q_proj", "v_proj"],
+        task_type="CAUSAL_LM",
+        inference_mode=False,
+    )
 
 Llama2Config.register(
     "meta-llama/Llama-2-7b-hf",
@@ -161,7 +176,14 @@ class Llama2ChatConfig(ModelConfig):
     model_id: str = "meta-llama/Llama-2-7b-chat-hf"
     max_length: int = 4096
     format: PromptFormat = field(default_factory=Llama2Format)
-
+    default_lora_config =  dict(
+        r=8,
+        lora_alpha=32,
+        lora_dropout=0.05,
+        target_modules=["q_proj", "v_proj"],
+        task_type="CAUSAL_LM",
+        inference_mode=False,
+    )
 
 Llama2ChatConfig.register(
     "meta-llama/Llama-2-7b-chat-hf",
@@ -174,14 +196,28 @@ Llama2ChatConfig.register(
 class TogetherLlama2Config(ModelConfig):
     model_id: str = "togethercomputer/LLaMA-2-7B-32K"
     max_length: int = 32768
-
+    default_lora_config =  dict(
+        r=8,
+        lora_alpha=32,
+        lora_dropout=0.05,
+        target_modules=["q_proj", "v_proj"],
+        task_type="CAUSAL_LM",
+        inference_mode=False,
+    )
 
 @dataclass
 class TogetherLlama2InstructConfig(ModelConfig):
     model_id: str = "togethercomputer/LLaMA-2-7B-32K-Instruct"
     max_length: int = 32768
     format: PromptFormat = field(default_factory=TogetherLlama2Format)
-
+    default_lora_config =  dict(
+        r=8,
+        lora_alpha=32,
+        lora_dropout=0.05,
+        target_modules=["q_proj", "v_proj"],
+        task_type="CAUSAL_LM",
+        inference_mode=False,
+    )
 
 @dataclass
 class RedpajamaInstructConfig(ModelConfig):

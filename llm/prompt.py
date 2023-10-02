@@ -105,6 +105,7 @@ class Llama2Format(PromptFormat):
     """
     input: Role = field(default_factory=lambda: Role(prefix="[INST] ", suffix=" [/INST]"))
     system: Role = field(default_factory=lambda: Role(prefix="<<SYS>>\n", suffix="\n<</SYS>>\n\n"))
+    contexts: Role = field(default_factory=lambda: Role(suffix="\n"))
     response: Role = field(default_factory=lambda: Role(prefix=" ", suffix=" "))
     nested_system: bool = True
     role_separator: str = ""
@@ -256,10 +257,8 @@ class Prompt:
                 instruction.append(contexts_str)
 
         input_str = self.input_str(text)
-        if nested:
-            # Join nested roles together, then join with input content
-            nested_str = self.format.join_roles(nested)
-            input_str = self.format.join_contents([nested_str, input_str])
+        nested.append(input_str)
+        input_str = self.format.join_roles(nested)
         input_str = self.format.input.render(input_str)
 
         # Join remaining instruction roles and prepend BOS

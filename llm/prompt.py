@@ -142,7 +142,7 @@ class DollyFormat(PromptFormat):
 class Message:
     input: str
     response: Optional[str] = None
-    contexts: List[str] = field(default_factory=list)
+    contexts: Optional[List[str]] = None
 
 
 @dataclass
@@ -350,7 +350,7 @@ class Conversation:
         # Remove contexts from old messages
         if self.context_retention > 0 and len(self.messages) > self.context_retention:
             for message in self.messages[existing_count-1:-self.context_retention]:
-                message.contexts = []
+                message.contexts = None
 
     def clear(self):
         self.messages = []

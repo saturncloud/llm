@@ -198,10 +198,8 @@ class Prompt:
 
         # Format conversation
         for i, message in enumerate(messages):
-            last = (i == num_messages - 1)
             message_str = self.render_message(
                 message,
-                last=last,
                 with_system=(with_system and (i == 0)),
                 with_contexts=with_contexts,
             )
@@ -215,7 +213,6 @@ class Prompt:
     def render_message(
         self,
         message: Message,
-        last: Optional[bool] = None,
         with_system: bool = True,
         with_contexts: bool = True,
     ) -> str:
@@ -225,7 +222,7 @@ class Prompt:
         instruction_str = self.render_instruction(
             message.input, message.contexts, with_system=with_system, with_contexts=with_contexts
         )
-        response_str = self.render_response(message.response, last=last)
+        response_str = self.render_response(message.response)
         return self.format.join_roles([instruction_str, response_str])
 
     def render_instruction(
@@ -234,6 +231,7 @@ class Prompt:
         contexts: Optional[List[str]] = None,
         with_system: bool = True,
         with_contexts: bool = True,
+        with_response_prefix: bool = False,
     ) -> str:
         """
         Render instruction components (system, contexts, input)
@@ -266,28 +264,23 @@ class Prompt:
         instruction_str = self.format.join_roles(instruction)
         if self.format.BOS:
             instruction_str = self.format.BOS + instruction_str
+        if with_response_prefix:
+            response_prefix = self.render_response(None, with_suffix=False)
+            instruction_str = self.format.join_roles([instruction_str, response_prefix])
         return instruction_str
 
     def render_response(
         self,
         text: Optional[str],
-        last: Optional[bool] = None,
         with_prefix: bool = True,
         with_suffix: bool = True,
     ) -> str:
         if text is None:
-            # Empty response.
-            if last is None:
-                # Assume null response indicates last message unless specified
-                last = True
-            with_suffix = with_suffix and not last
-            response_partial = self.response_str("", with_prefix=with_prefix, with_suffix=with_suffix)
-            response_partial = self.format.response.render(
-                response_partial, with_prefix=with_prefix, with_suffix=with_suffix
+            # Empty response. Render empty string without suffix to prompt the model for completion
+            response_partial = self.response_str("", with_prefix=with_prefix, with_suffix=False)
+            return self.format.response.render(
+                response_partial, with_prefix=with_prefix, with_suffix=False
             )
-            if not last and self.format.EOS:
-                response_partial += self.format.EOS
-            return response_partial
 
         # Fully formatted response
         response_str = self.response_str(text, with_prefix=with_prefix, with_suffix=with_suffix)

@@ -27,6 +27,7 @@ class QAEmbeddings(Embeddings):
     Models that use separate weights to embed contexts and questions,
     (e.g. DPR models) may pass a separate question model/tokenizer.
     """
+
     context_model: PreTrainedModel
     context_tokenizer: PreTrainedTokenizerBase
     question_model: PreTrainedModel
@@ -97,6 +98,7 @@ class QAEmbeddings(Embeddings):
         if set_start_method:
             # Required to fork a process using CUDA
             import multiprocess
+
             multiprocess.set_start_method("spawn")
         return embeddings
 

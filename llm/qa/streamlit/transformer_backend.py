@@ -10,7 +10,9 @@ from llm.qa.streamlit.app import QA_CHAT_MODEL, get_qa_session, get_vector_store
 
 
 @st.cache_resource
-def get_inference_engine(model_config: ModelConfig, num_workers: Optional[int] = None) -> InferenceEngine:
+def get_inference_engine(
+    model_config: ModelConfig, num_workers: Optional[int] = None
+) -> InferenceEngine:
     # MultiprocessEngine ensures sessions gets dedicated access to a model
     # while their request is being processed. By default, one inference engine will
     # be loaded to each available GPU device.
@@ -30,7 +32,9 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument("-m", "--model-id", help="Chat model ID", default=QA_CHAT_MODEL)
-    parser.add_argument("-n", "--num-workers", help="Number of chat models to run. Defaults to num GPUs.")
+    parser.add_argument(
+        "-n", "--num-workers", help="Number of chat models to run. Defaults to num GPUs."
+    )
     args = parser.parse_args()
 
     model_config = ModelConfig.from_registry(args.model_id)

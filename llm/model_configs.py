@@ -14,7 +14,15 @@ from transformers import (
     __version__ as TRANSFORMERS_VERSION,
 )
 
-from llm.prompt import ChatMLFormat, DollyFormat, Llama2Format, PromptFormat, RedpajamaFormat, TogetherLlama2Format, VicunaFormat
+from llm.prompt import (
+    ChatMLFormat,
+    DollyFormat,
+    Llama2Format,
+    PromptFormat,
+    RedpajamaFormat,
+    TogetherLlama2Format,
+    VicunaFormat,
+)
 
 _registry: Dict[str, Type[ModelConfig]] = {}
 
@@ -44,6 +52,7 @@ class ModelConfig:
     PEFT models use their peft adapter name as model_id,
     and set the base model ID in peft_base_id.
     """
+
     model_id: str = ""
     max_length: int = 2048
     format: PromptFormat = field(default_factory=PromptFormat)
@@ -80,7 +89,9 @@ class ModelConfig:
         if model_id in _registry:
             cls = _registry[model_id]
         else:
-            logging.warn(f'ModelConfig "{model_id}" not found in registry. Using generic configuration.')
+            logging.warn(
+                f'ModelConfig "{model_id}" not found in registry. Using generic configuration.'
+            )
 
         return cls(model_id=model_id, **kwargs)
 
@@ -108,6 +119,7 @@ class ModelConfig:
         model = model_cls.from_pretrained(model_id, **model_kwargs)
         if self.peft_base_id:
             from peft import PeftModel
+
             model = PeftModel.from_pretrained(model, self.model_id, **self.peft_kwargs)
         return model
 
@@ -200,11 +212,13 @@ class RedpajamaChatConfig(ModelConfig):
 class MPTInstructConfig(ModelConfig):
     model_id: str = "mosaicml/mpt-7b-instruct"
     format: PromptFormat = field(default_factory=DollyFormat)
-    model_kwargs: Dict[str, Any] = field(default_factory=lambda: {
-        "init_device": "meta",
-        # MPT not yet full supported by Transformers
-        "trust_remote_code": True,
-    })
+    model_kwargs: Dict[str, Any] = field(
+        default_factory=lambda: {
+            "init_device": "meta",
+            # MPT not yet full supported by Transformers
+            "trust_remote_code": True,
+        }
+    )
 
 
 MPTInstructConfig.register(
@@ -217,11 +231,13 @@ MPTInstructConfig.register(
 class MPTChatConfig(ModelConfig):
     model_id: str = "mosaicml/mpt-7b-chat"
     format: PromptFormat = field(default_factory=ChatMLFormat)
-    model_kwargs: Dict[str, Any] = field(default_factory=lambda: {
-        "init_device": "meta",
-        # MPT not yet full supported by Transformers
-        "trust_remote_code": True,
-    })
+    model_kwargs: Dict[str, Any] = field(
+        default_factory=lambda: {
+            "init_device": "meta",
+            # MPT not yet full supported by Transformers
+            "trust_remote_code": True,
+        }
+    )
 
 
 MPTChatConfig.register(

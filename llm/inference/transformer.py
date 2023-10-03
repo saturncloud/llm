@@ -5,7 +5,15 @@ import gc
 from typing import Iterable, List, Optional, Tuple, Union
 
 import torch
-from transformers import PreTrainedModel, PreTrainedTokenizerBase, LogitsProcessorList, RepetitionPenaltyLogitsProcessor, TemperatureLogitsWarper, TopPLogitsWarper, TopKLogitsWarper
+from transformers import (
+    PreTrainedModel,
+    PreTrainedTokenizerBase,
+    LogitsProcessorList,
+    RepetitionPenaltyLogitsProcessor,
+    TemperatureLogitsWarper,
+    TopPLogitsWarper,
+    TopKLogitsWarper,
+)
 
 from llm.inference.base import InferenceEngine
 from llm.model_configs import ModelConfig
@@ -15,6 +23,7 @@ class TransformersEngine(InferenceEngine):
     """
     Generate a token stream from a prompt with the given transformer model
     """
+
     def __init__(
         self,
         model: PreTrainedModel,
@@ -125,10 +134,10 @@ class TransformersEngine(InferenceEngine):
         torch.cuda.empty_cache()
 
     def prefill(
-            self, input_ids: List[int]
-        ) -> Tuple[
-            torch.FloatTensor, Tuple[Tuple[torch.FloatTensor]], Optional[Tuple[torch.FloatTensor]]
-        ]:
+        self, input_ids: List[int]
+    ) -> Tuple[
+        torch.FloatTensor, Tuple[Tuple[torch.FloatTensor]], Optional[Tuple[torch.FloatTensor]]
+    ]:
         """
         First pass through the model. Attention is calculated for the entire input.
         In subsequent steps, attention is only calculated for new tokens.

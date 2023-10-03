@@ -39,7 +39,10 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("url", help="Base URL for vLLM API")
     parser.add_argument(
-        "-m", "--model-id", help="Chat model ID for determining prompt format", default=QA_CHAT_MODEL
+        "-m",
+        "--model-id",
+        help="Chat model ID for determining prompt format",
+        default=QA_CHAT_MODEL,
     )
     args = parser.parse_args()
 

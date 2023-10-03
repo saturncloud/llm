@@ -19,11 +19,33 @@ def chat_cli():
 
 @chat_cli.command("cmdline", short_help="Conversational question answering from semantic search")
 @click.argument("dataset-path", required=True, envvar="QA_DATASET_PATH")
-@click.option("--dataset-type", help="Input file type. Defaults to file extension.", default=None, envvar="QA_INPUT_TYPE")
-@click.option("--index-path", help="Path to a pre-built FAISS index over the dataset", default=None, envvar="QA_INDEX_PATH")
-@click.option("--model-id", help="Chat model ID for prompt formatting.", default=VicunaConfig.model_id, envvar="QA_CHAT_MODEL")
-@click.option("--context-model", help="Model name or path for context embedding", default=DEFAULT_MODEL, envvar="QA_CONTEXT_MODEL")
-@click.option("--rephrase", is_flag=True, help="Rephrase the question with context from previous messages")
+@click.option(
+    "--dataset-type",
+    help="Input file type. Defaults to file extension.",
+    default=None,
+    envvar="QA_INPUT_TYPE",
+)
+@click.option(
+    "--index-path",
+    help="Path to a pre-built FAISS index over the dataset",
+    default=None,
+    envvar="QA_INDEX_PATH",
+)
+@click.option(
+    "--model-id",
+    help="Chat model ID for prompt formatting.",
+    default=VicunaConfig.model_id,
+    envvar="QA_CHAT_MODEL",
+)
+@click.option(
+    "--context-model",
+    help="Model name or path for context embedding",
+    default=DEFAULT_MODEL,
+    envvar="QA_CONTEXT_MODEL",
+)
+@click.option(
+    "--rephrase", is_flag=True, help="Rephrase the question with context from previous messages"
+)
 @click.option("--max-new-tokens", default=256, type=int, help="Max new generated tokens")
 @click.option("--temperature", default=0.7, type=float, help="Logit sampling temperature")
 @click.option("--top-p", default=1.0, type=float, help="Logit sampling Top P")
@@ -63,7 +85,7 @@ def cmdline_cli(
         for output_text in qa_session.stream_answer(
             input_text, max_new_tokens=max_new_tokens, temperature=temperature, top_p=top_p
         ):
-            new_output = output_text[len(prev_output):]
+            new_output = output_text[len(prev_output) :]
             prev_output = output_text
             print(new_output, end="", flush=True)
         print()
@@ -80,16 +102,30 @@ def streamlit_cli(ctx):
 
 
 @streamlit_cli.command("transformers", short_help="Local transformers engine")
-@click.option("--model-id", help="Chat model ID.", default=VicunaConfig.model_id, envvar="QA_CHAT_MODEL")
-@click.option("--num-workers", type=int, default=None, help="Number of chat models to run. Defaults to num GPUs")
-@click.option("--dataset", required=True, help="Path to dataset with contexts. Defaults to env QA_DATASET_PATH", envvar="QA_DATASET_PATH")
+@click.option(
+    "--model-id", help="Chat model ID.", default=VicunaConfig.model_id, envvar="QA_CHAT_MODEL"
+)
+@click.option(
+    "--num-workers",
+    type=int,
+    default=None,
+    help="Number of chat models to run. Defaults to num GPUs",
+)
+@click.option(
+    "--dataset",
+    required=True,
+    help="Path to dataset with contexts. Defaults to env QA_DATASET_PATH",
+    envvar="QA_DATASET_PATH",
+)
 @click.option(
     "--index",
     help="Path to a pre-built FAISS index over the dataset. Defaults to env QA_INDEX_PATH or <dataset-name>.faiss",
     default=None,
     envvar="QA_INDEX_PATH",
 )
-def transformers_backend(model_id: str, num_workers: Optional[int], dataset: str, index: Optional[str]) -> QASession:
+def transformers_backend(
+    model_id: str, num_workers: Optional[int], dataset: str, index: Optional[str]
+) -> QASession:
     os.environ["QA_DATASET_PATH"] = dataset
     if index:
         os.environ["QA_INDEX_PATH"] = index
@@ -101,8 +137,18 @@ def transformers_backend(model_id: str, num_workers: Optional[int], dataset: str
 
 @streamlit_cli.command("vllm-client", short_help="Remote vLLM engine")
 @click.argument("url")
-@click.option("--model-id", help="Chat model ID for prompt formatting.", default=VicunaConfig.model_id, envvar="QA_CHAT_MODEL")
-@click.option("--dataset", required=True, help="Path to dataset with contexts. Defaults to env QA_DATASET_PATH", envvar="QA_DATASET_PATH")
+@click.option(
+    "--model-id",
+    help="Chat model ID for prompt formatting.",
+    default=VicunaConfig.model_id,
+    envvar="QA_CHAT_MODEL",
+)
+@click.option(
+    "--dataset",
+    required=True,
+    help="Path to dataset with contexts. Defaults to env QA_DATASET_PATH",
+    envvar="QA_DATASET_PATH",
+)
 @click.option(
     "--index",
     help="Path to a pre-built FAISS index over the dataset. Defaults to env QA_INDEX_PATH or <dataset-name>.faiss",

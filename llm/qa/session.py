@@ -18,6 +18,7 @@ class QASession:
     Contexts relevant to questions are retrieved from the given vector store and appended
     to the system prompt that is fed into inference.
     """
+
     def __init__(
         self,
         engine: InferenceEngine,
@@ -59,7 +60,9 @@ class QASession:
             qa_prompt = qa_prompt.from_model_config(model_config)
         if isinstance(rephrase_prompt, type):
             rephrase_prompt = rephrase_prompt.from_model_config(model_config)
-        return cls(engine, vector_store, qa_prompt=qa_prompt, rephrase_prompt=rephrase_prompt, **kwargs)
+        return cls(
+            engine, vector_store, qa_prompt=qa_prompt, rephrase_prompt=rephrase_prompt, **kwargs
+        )
 
     def stream_answer(self, question: str, update_context: bool = False, **kwargs) -> Iterable[str]:
         """
@@ -162,7 +165,12 @@ class QASession:
             return self.conversation.messages[-1]
         return None
 
-    def get_history(self, user_label: str = "Question: ", assistant_label: str = "Answer: ", separator: str = "\n") -> str:
+    def get_history(
+        self,
+        user_label: str = "Question: ",
+        assistant_label: str = "Answer: ",
+        separator: str = "\n",
+    ) -> str:
         """
         Get conversation history formatted as a string
         """

@@ -21,9 +21,22 @@ def data_cli():
 @click_coroutine
 @click.argument("url", required=True)
 @click.option("-o", "--output-path", required=True, help="Output path for the dataset")
-@click.option("domains", "-d", "--domain", multiple=True, help="One or more domains that can be scraped from the url. Any by default.", default=None)
-@click.option("--link-regex", help="Match URLs against regex before adding to scrape pipeline", default=None)
-@click.option("--text-css", help="Only extract text from elements matching the given CSS selector", default=None)
+@click.option(
+    "domains",
+    "-d",
+    "--domain",
+    multiple=True,
+    help="One or more domains that can be scraped from the url. Any by default.",
+    default=None,
+)
+@click.option(
+    "--link-regex", help="Match URLs against regex before adding to scrape pipeline", default=None
+)
+@click.option(
+    "--text-css",
+    help="Only extract text from elements matching the given CSS selector",
+    default=None,
+)
 @click.option("--max-depth", default=10, type=int, help="Maximum depth of URL links to follow")
 async def scrape(
     url: str,
@@ -47,12 +60,16 @@ async def scrape(
     save_data(dataset, output_path)
 
 
-@data_cli.command(short_help="Format text and ID fields of the dataset to known keys, generating a UUID for each row if needed")
+@data_cli.command(
+    short_help="Format text and ID fields of the dataset to known keys, generating a UUID for each row if needed"
+)
 @click.argument("input-path", required=True)
 @click.option("-o", "--output-path", required=True, help="Output path for the parsed dataset")
 @click.option("--input-type", help="Input file type. Defaults to file extension.")
 @click.option("--batch-size", help="Batch size for processing rows of the dataset", default=100)
-@click.option("--source-text-field", help="Text field of the source dataset", default=str(DataFields.TEXT))
+@click.option(
+    "--source-text-field", help="Text field of the source dataset", default=str(DataFields.TEXT)
+)
 @click.option("--source-id-field", help="ID field of the source dataset", default=None)
 def format(
     input_path: str,
@@ -74,14 +91,21 @@ def format(
     save_data(dataset, output_path)
 
 
-@data_cli.command(short_help="Split the dataset on its text field such that each chunk is of a given maximum size")
+@data_cli.command(
+    short_help="Split the dataset on its text field such that each chunk is of a given maximum size"
+)
 @click.argument("input-path", required=True)
 @click.option("-o", "--output-path", required=True, help="Output path for the parsed dataset")
 @click.option("--input-type", help="Input file type. Defaults to file extension.")
 @click.option("--batch-size", help="Batch size for processing rows of the dataset", default=100)
 @click.option("--chunk-size", help="Max chunk size of final text in number of tokens", default=256)
 @click.option("--chunk-overlap", help="Number of tokens to overlap between chunks", default=32)
-@click.option("--context-model", help="Model name or path for splitting contexts by token length", default=DEFAULT_MODEL, envvar="QA_CONTEXT_MODEL")
+@click.option(
+    "--context-model",
+    help="Model name or path for splitting contexts by token length",
+    default=DEFAULT_MODEL,
+    envvar="QA_CONTEXT_MODEL",
+)
 def split(
     input_path: str,
     output_path: str,
@@ -105,13 +129,27 @@ def split(
     save_data(dataset, output_path)
 
 
-@data_cli.command(short_help="Embed the text field of the dataset for semantic search, and save the result")
+@data_cli.command(
+    short_help="Embed the text field of the dataset for semantic search, and save the result"
+)
 @click.argument("input-path", required=True)
 @click.option("-o", "--output-path", required=True, help="Output path for the parsed dataset")
 @click.option("--input-type", help="Input file type. Defaults to file extension.")
 @click.option("--batch-size", help="Batch size for processing rows of the dataset", default=100)
-@click.option("devices", "-d", "--device", multiple=True, help="One or more devices to run embeddings on. Pass 'auto' to auto-detect multiple-gpus.", default=None)
-@click.option("--context-model", help="Model name or path for context embedding", default=DEFAULT_MODEL, envvar="QA_CONTEXT_MODEL")
+@click.option(
+    "devices",
+    "-d",
+    "--device",
+    multiple=True,
+    help="One or more devices to run embeddings on. Pass 'auto' to auto-detect multiple-gpus.",
+    default=None,
+)
+@click.option(
+    "--context-model",
+    help="Model name or path for context embedding",
+    default=DEFAULT_MODEL,
+    envvar="QA_CONTEXT_MODEL",
+)
 def embed(
     input_path: str,
     output_path: str,
@@ -129,14 +167,35 @@ def embed(
     save_data(dataset, output_path)
 
 
-@data_cli.command(short_help="Full processing pipeline for getting a document dataset ready to be indexed")
+@data_cli.command(
+    short_help="Full processing pipeline for getting a document dataset ready to be indexed"
+)
 @click.argument("input-path", required=True)
 @click.option("-o", "--output-path", required=True, help="Output path for the parsed dataset")
 @click.option("--input-type", help="Input file type. Defaults to file extension.")
 @click.option("--batch-size", help="Batch size for processing rows of the dataset", default=100)
-@click.option("devices", "-d", "--device", multiple=True, help="One or more devices to run embeddings on. Pass 'auto' to auto-detect multiple-gpus.", default=None)
-@click.option("--context-model", help="Model name or path for context embedding", default=DEFAULT_MODEL, envvar="QA_CONTEXT_MODEL")
-def pipeline(input_path: str, output_path: str, input_type: Optional[str], batch_size: int, devices: Optional[List[str]], context_model: str):
+@click.option(
+    "devices",
+    "-d",
+    "--device",
+    multiple=True,
+    help="One or more devices to run embeddings on. Pass 'auto' to auto-detect multiple-gpus.",
+    default=None,
+)
+@click.option(
+    "--context-model",
+    help="Model name or path for context embedding",
+    default=DEFAULT_MODEL,
+    envvar="QA_CONTEXT_MODEL",
+)
+def pipeline(
+    input_path: str,
+    output_path: str,
+    input_type: Optional[str],
+    batch_size: int,
+    devices: Optional[List[str]],
+    context_model: str,
+):
     dataset = load_data(input_path, input_type)
     embedding = QAEmbeddings(context_model)
     embedding_devices = embedding.multiprocess(*devices) if devices else [embedding]

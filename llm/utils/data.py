@@ -21,9 +21,7 @@ def load_data(input_path: str, input_type: Optional[str] = None) -> Dataset:
     if input_type == "jsonl":
         input_type = "json"
 
-    return load_dataset(
-        input_type, data_files={split: input_path}, split=split
-    )
+    return load_dataset(input_type, data_files={split: input_path}, split=split)
 
 
 def merge_dict(a: Dict, b: Dict) -> Dict:

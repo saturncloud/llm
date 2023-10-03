@@ -17,6 +17,7 @@ class MultiprocessEngine(InferenceEngine):
 
     Enables thread-safe non-blocking inference across multiple devices
     """
+
     def __init__(self, workers: List[WorkerPipe]):
         self.workers = workers
         self.closed = False
@@ -25,7 +26,13 @@ class MultiprocessEngine(InferenceEngine):
             self.queue.put(worker)
 
     @classmethod
-    def from_model_config(cls, model_config: ModelConfig, num_workers: Optional[int] = None, wait: bool = True, **kwargs) -> MultiprocessEngine:
+    def from_model_config(
+        cls,
+        model_config: ModelConfig,
+        num_workers: Optional[int] = None,
+        wait: bool = True,
+        **kwargs,
+    ) -> MultiprocessEngine:
         # Required for CUDA
         set_start_method("spawn")
 
@@ -54,8 +61,16 @@ class MultiprocessEngine(InferenceEngine):
         return cls(workers)
 
     @staticmethod
-    def _transformers_worker(pipe: WorkerPipe, model_config: ModelConfig, local_rank: int, signal_ready: bool = False, **kwargs):
-        engine = TransformersEngine.from_model_config(model_config, device_map={"": local_rank}, **kwargs)
+    def _transformers_worker(
+        pipe: WorkerPipe,
+        model_config: ModelConfig,
+        local_rank: int,
+        signal_ready: bool = False,
+        **kwargs,
+    ):
+        engine = TransformersEngine.from_model_config(
+            model_config, device_map={"": local_rank}, **kwargs
+        )
         if signal_ready:
             pipe.send_response(None)
         while True:
@@ -101,6 +116,7 @@ class StreamRequest:
     """
     Wraps an inference request to be processed by a worker
     """
+
     def __init__(self, prompt: str, **kwargs) -> None:
         self.prompt = prompt
         self.kwargs = kwargs
@@ -116,11 +132,11 @@ class StreamRequest:
         return cls(**data)
 
 
-
 class WorkerPipe:
     """
     Manages communication between an inference worker and the main process
     """
+
     def __init__(self):
         self.parent_conn, self.child_conn = Pipe()
 

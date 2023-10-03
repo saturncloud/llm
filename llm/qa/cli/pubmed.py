@@ -16,7 +16,9 @@ import shutil
 from tqdm.contrib.concurrent import process_map
 
 
-@click.group(name="pubmed", short_help="Commands for downloading PubMed and formatting it into a dataset")
+@click.group(
+    name="pubmed", short_help="Commands for downloading PubMed and formatting it into a dataset"
+)
 def pubmed_cli():
     pass
 
@@ -26,7 +28,7 @@ def pubmed_cli():
 def download(output_path: str):
     url = "https://ftp.ncbi.nlm.nih.gov/pubmed/baseline/"
     resp = requests.get(url)
-    links = BeautifulSoup(resp.content, parse_only=SoupStrainer('a'))
+    links = BeautifulSoup(resp.content, parse_only=SoupStrainer("a"))
     links = list(links)
 
     from tqdm import tqdm
@@ -63,7 +65,9 @@ def jsonl(input_path: str, output_path: str, tmp_path: str, nprocs: int = 1):
 @click.argument("output-path")
 @click.option("--nprocs", default=1)
 @click.option("--titles", "--title", multiple=True, required=False)
-def make_single_jsonl(input_path: str, output_path: str, nprocs: int = 1, titles: Optional[List[str]] = None):
+def make_single_jsonl(
+    input_path: str, output_path: str, nprocs: int = 1, titles: Optional[List[str]] = None
+):
     paths = [join(input_path, x) for x in os.listdir(input_path)]
     if not exists(output_path):
         os.makedirs(output_path)
@@ -121,7 +125,7 @@ def parse_node(node):
     publication_title = None
     _ = node.find(".//Abstract")
     if _ is not None:
-        text = etree.tostring(_, encoding="utf-8", method='text')
+        text = etree.tostring(_, encoding="utf-8", method="text")
         text = to_string(text)
     _ = node.find(".//ArticleTitle")
     if _ is not None:
@@ -151,11 +155,11 @@ def handle_one_xml(input_path: str, output_path: str, tmpdir: str):
             data = parse_node(node)
             all_data.append(data)
     try:
-        with tempfile.NamedTemporaryFile(mode='w+', dir=tmpdir, delete=False) as fout:
+        with tempfile.NamedTemporaryFile(mode="w+", dir=tmpdir, delete=False) as fout:
             for data in all_data:
                 if data["text"] and data["title"]:
                     fout.write(json.dumps(data))
-                    fout.write('\n')
+                    fout.write("\n")
             shutil.move(fout.name, output_path)
     except Exception as e:
         raise

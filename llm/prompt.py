@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Iterable, List, Optional
+
 if TYPE_CHECKING:
     from llm.model_configs import ModelConfig
 
@@ -33,6 +34,7 @@ class PromptFormat:
     Prompt roles and formatting options to control how messages between a user
     and an AI assistant are rendered.
     """
+
     input: Role = field(default_factory=Role)
     response: Role = field(default_factory=Role)
     system: Role = field(default_factory=Role)
@@ -103,6 +105,7 @@ class Llama2Format(PromptFormat):
 
     {input} [/INST] {response} </s>
     """
+
     input: Role = field(default_factory=lambda: Role(prefix="[INST] ", suffix=" [/INST]"))
     system: Role = field(default_factory=lambda: Role(prefix="<<SYS>>\n", suffix="\n<</SYS>>\n\n"))
     contexts: Role = field(default_factory=lambda: Role(suffix="\n"))
@@ -120,6 +123,7 @@ class TogetherLlama2Format(PromptFormat):
     The exact formatting differs a bit from training data and model card, this is a mix of the two
     that does well for inference.
     """
+
     input: Role = field(default_factory=lambda: Role(prefix="[INST]  ", suffix="  [/INST]\n\n"))
     nested_system: bool = True
     role_separator: str = ""
@@ -127,9 +131,15 @@ class TogetherLlama2Format(PromptFormat):
 
 @dataclass
 class ChatMLFormat(PromptFormat):
-    input: Role = field(default_factory=lambda: Role(prefix="<|im_start|>user\n", suffix="<|im_end|>"))
-    response: Role = field(default_factory=lambda: Role(prefix="<|im_start|>assistant\n", suffix="<|im_end|>"))
-    system: Role = field(default_factory=lambda: Role(prefix="<|im_start|>system\n", suffix="<|im_end|>"))
+    input: Role = field(
+        default_factory=lambda: Role(prefix="<|im_start|>user\n", suffix="<|im_end|>")
+    )
+    response: Role = field(
+        default_factory=lambda: Role(prefix="<|im_start|>assistant\n", suffix="<|im_end|>")
+    )
+    system: Role = field(
+        default_factory=lambda: Role(prefix="<|im_start|>system\n", suffix="<|im_end|>")
+    )
 
 
 @dataclass
@@ -181,7 +191,9 @@ class Prompt:
 
         # Format examples
         if with_examples and self.examples:
-            examples_str = self.render_examples(with_system=with_system, with_contexts=with_contexts)
+            examples_str = self.render_examples(
+                with_system=with_system, with_contexts=with_contexts
+            )
             results.append(examples_str)
             # System messed is included with examples
             with_system = False
@@ -294,17 +306,24 @@ class Prompt:
     def render_system(self) -> str:
         return self.format.system.render(self.system_message)
 
-    def render_examples(self, examples: Optional[List[Message]] = None, with_system: bool = True, with_contexts: bool = True) -> str:
+    def render_examples(
+        self,
+        examples: Optional[List[Message]] = None,
+        with_system: bool = True,
+        with_contexts: bool = True,
+    ) -> str:
         examples_str = self.render(
-            examples or self.examples, with_system=with_system, with_contexts=with_contexts, with_examples=False
+            examples or self.examples,
+            with_system=with_system,
+            with_contexts=with_contexts,
+            with_examples=False,
         )
         return self.format.examples.render(examples_str)
 
     def render_contexts(self, contexts: List[str]) -> str:
-        contexts_str = self.format.join_contents([
-            self.context_str(context, index=i)
-            for i, context in enumerate(contexts)
-        ])
+        contexts_str = self.format.join_contents(
+            [self.context_str(context, index=i) for i, context in enumerate(contexts)]
+        )
         return self.format.contexts.render(contexts_str)
 
     def input_str(self, text: str, **kwargs) -> str:
@@ -313,7 +332,9 @@ class Prompt:
     def context_str(self, text: str, **kwargs) -> str:
         return self.context_template.format_map({self.text_key: text, **kwargs})
 
-    def response_str(self, text: str, with_prefix: bool = True, with_suffix: bool = True, **kwargs) -> str:
+    def response_str(
+        self, text: str, with_prefix: bool = True, with_suffix: bool = True, **kwargs
+    ) -> str:
         # Response template has to be handled specially since it may be incomplete
         template = self.response_template
         if not with_prefix or not with_suffix:
@@ -344,12 +365,14 @@ class Conversation:
         # Trim old messages
         if self.message_retention > 0 and len(self.messages) > self.message_retention:
             removed_count = len(self.messages) - self.message_retention
-            existing_count = existing_count - removed_count if existing_count >= removed_count else 0
-            self.messages = self.messages[-self.message_retention:]
+            existing_count = (
+                existing_count - removed_count if existing_count >= removed_count else 0
+            )
+            self.messages = self.messages[-self.message_retention :]
 
         # Remove contexts from old messages
         if self.context_retention > 0 and len(self.messages) > self.context_retention:
-            for message in self.messages[existing_count-1:-self.context_retention]:
+            for message in self.messages[existing_count - 1 : -self.context_retention]:
                 message.contexts = None
 
     def clear(self):

@@ -11,7 +11,15 @@ from datasets import load_dataset
 import torch
 from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
 from peft.utils import get_peft_model_state_dict
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, DataCollatorForLanguageModeling, PreTrainedTokenizerBase, Trainer, TrainingArguments
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+    DataCollatorForLanguageModeling,
+    PreTrainedTokenizerBase,
+    Trainer,
+    TrainingArguments,
+)
 
 from llm import settings
 from llm.model_configs import ModelConfig
@@ -40,9 +48,7 @@ GLOBAL_RANK = int(os.getenv("RANK", 0))
 
 MEDCUNA_7B = ModelConfig(
     os.path.join(settings.LOCAL_MODELS_DIR, NAME),
-    tokenizer_kwargs={
-        "use_fast": False
-    },
+    tokenizer_kwargs={"use_fast": False},
     peft_base_id=BASE_MODEL,
 )
 
@@ -53,7 +59,9 @@ def has_checkpoint(dir: str) -> bool:
     return False
 
 
-def load_base_model(lora_config: LoraConfig, gradient_checkpointing: bool = True) -> Tuple[PeftModel, PreTrainedTokenizerBase]:
+def load_base_model(
+    lora_config: LoraConfig, gradient_checkpointing: bool = True
+) -> Tuple[PeftModel, PreTrainedTokenizerBase]:
     tokenizer = AutoTokenizer.from_pretrained(
         BASE_MODEL,
         model_max_length=MODEL_MAX_LENGTH,
@@ -64,9 +72,7 @@ def load_base_model(lora_config: LoraConfig, gradient_checkpointing: bool = True
     tokenizer.pad_token = tokenizer.unk_token
 
     # Load model to GPU specified by LOCAL_RANK
-    device_map = (
-        {"": LOCAL_RANK}
-    )
+    device_map = {"": LOCAL_RANK}
     model = AutoModelForCausalLM.from_pretrained(
         BASE_MODEL,
         quantization_config=BitsAndBytesConfig(
@@ -77,7 +83,9 @@ def load_base_model(lora_config: LoraConfig, gradient_checkpointing: bool = True
         ),
         device_map=device_map,
     )
-    model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=gradient_checkpointing)
+    model = prepare_model_for_kbit_training(
+        model, use_gradient_checkpointing=gradient_checkpointing
+    )
 
     if torch.cuda.device_count() > 1:
         # keeps Trainer from trying its own DataParallelism when more than 1 gpu is available
@@ -86,7 +94,7 @@ def load_base_model(lora_config: LoraConfig, gradient_checkpointing: bool = True
 
     # Load LoRa adapter
     model = get_peft_model(model, lora_config)
-    model.config.use_cache=False
+    model.config.use_cache = False
 
     if LOCAL_RANK == 0:
         model.print_trainable_parameters()
@@ -127,9 +135,13 @@ def tune():
         bias="none",
         task_type="CAUSAL_LM",
     )
-    model, tokenizer = load_base_model(lora_config, gradient_checkpointing=training_args.gradient_checkpointing)
+    model, tokenizer = load_base_model(
+        lora_config, gradient_checkpointing=training_args.gradient_checkpointing
+    )
     data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
-    lazy_training = LazySupervisedFineTuning(train_dataset, tokenizer, process_data=process_pubmed_qa)
+    lazy_training = LazySupervisedFineTuning(
+        train_dataset, tokenizer, process_data=process_pubmed_qa
+    )
     lazy_eval = LazySupervisedFineTuning(eval_dataset, tokenizer, process_data=process_pubmed_qa)
 
     trainer = Trainer(
@@ -147,6 +159,7 @@ def tune():
         model.save_pretrained(output_dir, state_dict=state_dict)
         if settings.SATURNFS_MODELS_DIR:
             from saturnfs import SaturnFS
+
             timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H.%M.%S")
             remote_dir = os.path.join(settings.SATURNFS_MODELS_DIR, f"{NAME}-{timestamp}")
             sfs = SaturnFS()

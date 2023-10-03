@@ -383,3 +383,6 @@ class Conversation:
         Render the conversation with a prompt
         """
         return prompt.render(self.messages, **kwargs)
+
+
+prompts = {}

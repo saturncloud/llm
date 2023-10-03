@@ -18,12 +18,8 @@ bb.foo()
 def run(config: Dict[str, Any]):
     finetune_config = FineTuneConfig.from_config(**config)
 
-    tokenizer = AutoTokenizer.from_pretrained(
-        finetune_config.base_model
-    )
-    device_map = (
-        {"": LOCAL_RANK}
-    )
+    tokenizer = AutoTokenizer.from_pretrained(finetune_config.base_model)
+    device_map = {"": LOCAL_RANK}
     model = AutoModelForCausalLM.from_pretrained(
         finetune_config.base_model,
         load_in_8bit=finetune_config.load_in_8bit,
@@ -47,14 +43,10 @@ def run(config: Dict[str, Any]):
         args=finetune_config.training_arguments,
         data_collator=default_data_collator,
         train_dataset=train_dataset,
-        eval_dataset=eval_dataset
+        eval_dataset=eval_dataset,
     )
     trainer.train()
 
 
 if __name__ == "__main__":
     run()
-
-
-
-

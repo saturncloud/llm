@@ -4,22 +4,22 @@ from typing import Union, Dict, Optional, List, Any
 import tempfile
 
 import fsspec.generic
-from datasets import load_dataset, load_from_disk
+from datasets import load_dataset, load_from_disk, Dataset
 from transformers import TrainingArguments, TrainerCallback, TrainerState, TrainerControl
 from peft import LoraConfig
+import torch
+from saturnfs import SaturnFS
+import fsspec
 
-from llm.model_configs import ModelConfig
+fsspec.register_implementation("sfs", SaturnFS)
 
-
-configs = {}
 
 
 class ConfigError(Exception):
     pass
 
 
-def register(config_class):
-    configs[config_class.__name__] = config_class
+experiment_tracking_methods = {}
 
 
 @dataclass
@@ -33,124 +33,162 @@ class ExperimentTrackingConfig:
     of this config, but this exists to make it easy to configure experiment tracking in config.
     As a result - most of the values will be optional
     """
-    def set_env(self):
-        obj = asdict(self)
-        for k, v in obj:
-            if v is not None:
-                os.environ[k] = v
-    @property
-    def report_to(self):
-        raise NotImplementedError
+
+    method: str
+    kwargs: Dict[str, Any]
+    report_to: List[str] = field(default_factory=list)
+
+    @classmethod
+    def from_config(cls, method, **kwargs):
+        return cls(method=method, kwargs=kwargs)
+
+    @classmethod
+    def register(cls, name, method) -> None:
+        experiment_tracking_methods[name] = method
+
+    def begin(self):
+        return experiment_tracking_methods[self.method](self, self.kwargs)
+
+
+def init_comet_ml(
+    config: ExperimentTrackingConfig,
+    comet_api_key: Optional[str] = None,
+    comet_workspace: Optional[str] = None,
+    comet_project_name: Optional[str] = None,
+    auto_output_logging=None,
+):
+    from comet_ml import Experiment
+
+    experiment = Experiment(
+        api_key=comet_api_key or os.getenv("COMET_API_KEY"),
+        workspace=comet_workspace or os.getenv("COMET_WORKSPACE"),
+        project_name=comet_project_name or os.getenv("COMET_PROJECT_NAME"),
+        auto_output_logging=auto_output_logging or "native",
+    )
+    config.report_to = ["comet_ml"]
+    return experiment
+
+
+def init_wandb(config: ExperimentTrackingConfig, wandb_project: Optional[str] = None, wandb_log_model: str = "all"):
+    if wandb_project:
+        os.eviron["WANDB_PROJECT"] = wandb_project
+    if wandb_log_model:
+        os.eviron["WANDB_LOG_MODEL"] = wandb_log_model
+    config.report_to = ["wandb"]
+
+
+ExperimentTrackingConfig.register("comet_ml", init_comet_ml)
+ExperimentTrackingConfig.register("wandb", init_wandb)
+
+
+
+dataset_method_registry = {}
 
 
 @dataclass
-class CometMLConfig(ExperimentTrackingConfig):
-    COMET_API_KEY: Optional[str] = None
-    COMET_WORKSPACE: Optional[str] = None
-    COMET_PROJECT_NAME: Optional[str] = None
-
-    @property
-    def report_to(self):
-        return "comet_ml"
-
-
-@dataclass
-class WandBConfig(ExperimentTrackingConfig):
-    WANDB_API_KEY: Optional[str] = None
-    WANDB_BASE_URL: Optional[str] = None
-    WANDB_PROJECT: Optional[str] = None
-
-    @property
-    def report_to(self):
-        return "wandb"
-
-@dataclass
-class LoadDatasetConfig:
+class DatasetConfig:
     # name or path to dataset
-    path: str
-    def load(self):
-        return load_dataset(self.path)
+    method: str
+    kwargs: Dict[str, Any]
+
+    @classmethod
+    def from_config(cls, method, **kwargs) -> DatasetConfig:
+        method = config
+        return cls(method=method, kwargs=kwargs)
+
+    def load(self) -> Dataset:
+        method = dataset_method_registry[self.name]
+        return method(**self.kwargs)
+
+    @classmethod
+    def register(cls, name: str, method: Any):
+        dataset_method_registry[name] = method
 
 
-@dataclass
-class LoadFromDiskConfig:
-    # path to dataset. can be fsspec path
-    dataset_path: str
-    def load(self):
-        return load_from_disk(self.dataset_path)
-
-
-def default_training_arguments(eval_dataset: Optional[Union[LoadDatasetConfig, LoadFromDiskConfig]], experiment_tracking_config: Optional[ExperimentTrackingConfig] = None) -> Dict[str, Any]:
+def default_training_arguments(
+    eval_dataset: Optional[Union[LoadDatasetConfig, LoadFromDiskConfig]],
+    experiment_tracking_config: Optional[ExperimentTrackingConfig] = None,
+) -> Dict[str, Any]:
     defaults = dict(
         bf16=False,
         optim="adamw_torch",
         num_train_epochs=1,
         gradient_accumulation_steps=2,
-        auto_find_batch_size=True,
+        per_device_train_batch_size=2,
+        per_device_eval_batch_size=2,
+        auto_find_batch_size=False,
         gradient_checkpointing=True,
         logging_strategy="steps",
         logging_steps=10,
-        max_steps=240,
         save_steps=30,
         save_strategy="steps",
     )
     if eval_dataset:
-        defaults.update(dict(
-            eval_steps=5,
-            evaluation_strategy="steps"
-        ))
+        defaults.update(dict(eval_steps=5, evaluation_strategy="steps"))
     if experiment_tracking_config:
-        defaults.update(dict(
-            report_to=[experiment_tracking_config.report_to]
-        ))
+        defaults.update({"report_to": [experiment_tracking_config.report_to]})
     return defaults
 
 
 @dataclass
 class FineTuneConfig:
     base_model: str
-    train_dataset_config: Union[LoadDatasetConfig, LoadFromDiskConfig]
+    train_dataset_config: DatsetConfig
     training_arguments: TrainingArguments
     lora_config: LoraConfig
-    experiment_tracking_config: Optional[Union[CometMLConfig, WandBConfig]] = None
-    eval_dataset_config: Optional[Union[LoadDatasetConfig, LoadFromDiskConfig]] = None
+    experiment_tracking_config: Optional[ExperimentTrackingConfig] = None
+    eval_dataset_config: Optional[DatasetConfig] = None
 
     # we need a local directory on the machine to save files.
     local_output: Optional[str] = None
     # we can additionally copy data to other networked locations.
     additional_output_paths: List[str] = field(default_factory=list)
 
-    torch_dtype: str = "float16"
+    torch_dtype: torch.dtype = torch.float16
     load_in_4bit: bool = False
     load_in_8bit: bool = False
     use_gradient_checkpointing: bool = True
+    resume_from_checkpoint: bool = True
 
     @classmethod
     def from_config(cls, **config) -> "FineTuneConfig":
-        model_config = ModelConfig.from_registry(config['base_model'])
+        model_config = ModelConfig.from_registry(config["base_model"])
         default_lora_dict = model_config.default_lora_config.copy()
 
-        if config.get('local_output') is None:
+        if config.get("local_output") is None:
             f = tempfile.mkdtemp()
-            config['local_output'] = f
+            config["local_output"] = f
 
-        experiment_tracking_config = load_config(config.pop('experiment_tracking_config'))
-        train_dataset_config = load_config(config.pop('train_dataset_config'))
-        eval_dataset_config = load_config(config.pop('eval_dataset_config'))
+        experiment_tracking_config = load_config(ExperimentTrackingConfig, config.pop("experiment_tracking_config", None))
+        train_dataset_config = load_config(DatasetConfig, config.pop("train_dataset_config"))
+        eval_dataset_config = load_config(DatasetConfig, config.pop("eval_dataset_config"))
 
-        training_arguments_dict = default_training_arguments(eval_dataset_config)
-        training_arguments_dict.update(config.pop('training_arguments', {}))
+        if "torch_dtype" in config:
+            config["torch_dtype"] = getattr(torch, config["torch_dtype"])
+
+        training_arguments_dict = default_training_arguments(
+            eval_dataset_config, experiment_tracking_config
+        )
+        training_arguments_dict.update(config.pop("training_arguments", {}))
         training_arguments_dict.setdefault("type", "TrainingArguments")
-        training_arguments_dict['output_dir'] = config["local_output"]
-        training_arguments = load_config(training_arguments_dict)
+        training_arguments_dict["output_dir"] = config["local_output"]
+        training_arguments = load_config(TrainingArguments, training_arguments_dict)
 
         lora_config_dict = default_lora_dict
-        lora_config_dict.update(config.pop('lora_config', {}))
+        lora_config_dict.update(config.pop("lora_config", {}))
         lora_config_dict.setdefault("type", "LoraConfig")
-        lora_config = load_config(lora_config_dict)
+        lora_config = load_config(LoraConfig, lora_config_dict)
+
         if train_dataset_config is None:
             raise ConfigError("train dataset is required")
-        return cls(training_arguments=training_arguments, lora_config=lora_config, train_dataset_config=train_dataset_config, eval_dataset_config=eval_dataset_config, output_path=output_path, **config)
+        return cls(
+            training_arguments=training_arguments,
+            lora_config=lora_config,
+            train_dataset_config=train_dataset_config,
+            eval_dataset_config=eval_dataset_config,
+            experiment_tracking_config=experiment_tracking_config,
+            **config
+        )
 
     def copy_callback(self):
         return CopyToSourcesCallback(self.local_output, self.additional_output_paths)
@@ -165,30 +203,39 @@ class CopyToSourcesCallback(TrainerCallback):
         for path in self.additional_output_paths:
             fsspec.generic.rsync(self.local_output, path)
 
-    def on_train_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+    def on_train_end(
+        self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs
+    ):
         """
         Event called at the end of training.
         """
         self.rsync()
 
-    def on_save(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+    def on_save(
+        self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs
+    ):
         """
         Event called at the end of training.
         """
         self.rsync()
 
 
-register(CometMLConfig)
-register(WandBConfig)
-register(LoadDatasetConfig)
-register(LoadFromDiskConfig)
-register(FineTuneConfig)
-register(TrainingArguments)
-register(LoraConfig)
-
-
-def load_config(config: Dict[str, Any]) -> Optional[Union[CometMLConfig, WandBConfig, LoadFromDiskConfig, LoadDatasetConfig, FineTuneConfig, LoraConfig]]:
-    if config is None:
+def load_config(
+    cls: type, kwargs: Optional[Dict[str, Any]]
+) -> Any:
+    if kwargs is None:
         return None
-    config_class = configs[config.pop('type')]
-    return config_class(**config)
+    if hasattr(cls, "from_config"):
+        return cls.from_config(**kwargs)
+    else:
+        return cls(**kwargs)
+
+
+@dataclass
+class DataPrepConfig:
+    source: Union[LoadDatasetConfig, LoadFromDiskConfig]
+    base_model: str
+
+    @classmethod
+    def from_config(cls, **config: Dict[str, Any]) -> "DataPrepConfig":
+        return cls(**config)

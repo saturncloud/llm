@@ -50,7 +50,13 @@ class VLLMClient(InferenceEngine):
     ) -> Iterable[str]:
         if not isinstance(stop, list):
             stop = [stop]
-        data = {"prompt": prompt, "stream": stream, "max_tokens": max_new_tokens, "stop": stop, **kwargs}
+        data = {
+            "prompt": prompt,
+            "stream": stream,
+            "max_tokens": max_new_tokens,
+            "stop": stop,
+            **kwargs,
+        }
         url = os.path.join(self.base_url, "generate")
 
         response = self.session.post(url, json=data, stream=stream)
@@ -71,5 +77,5 @@ class VLLMClient(InferenceEngine):
     def _trim_answer(self, prompt: str, answer: str, echo_prompt: bool = False) -> str:
         if not echo_prompt:
             if answer.startswith(prompt):
-                return answer[len(prompt):]
+                return answer[len(prompt) :]
         return answer

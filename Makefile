@@ -13,3 +13,8 @@ chat-cmdline:
 .PHONY: chat-streamlit
 chat-streamlit:
 	python llm/qa/cli/main.py chat streamlit
+
+
+.PHONY: format
+format:
+	black -l 100

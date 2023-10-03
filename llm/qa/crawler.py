@@ -70,6 +70,7 @@ class DocSpider(Spider):
         )
         dataset = Dataset.from_dict({"source": [], "text": [], "title": []})
         scrape_finished: bool = False
+
         def _append_content(item):
             nonlocal dataset
             # Not sure what scrapy is doing, but there are some unhashable parts of the item
@@ -123,7 +124,9 @@ class DocSpider(Spider):
         for url in self.extract_links(link_base, soup, self.link_css):
             yield Request(url, self.parse, meta={"dont_redirect": self.dont_redirect})
 
-    def extract_links(self, base_url: str, soup: BeautifulSoup, css_selector: Optional[str] = None) -> Iterable[str]:
+    def extract_links(
+        self, base_url: str, soup: BeautifulSoup, css_selector: Optional[str] = None
+    ) -> Iterable[str]:
         if css_selector:
             for element in soup.select(css_selector):
                 return self.extract_links(base_url, element)

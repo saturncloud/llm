@@ -18,7 +18,9 @@ QA_CHAT_MODEL = os.getenv("QA_CHAT_MODEL", VicunaConfig.model_id)
 
 
 @st.cache_resource
-def get_vector_store(dataset_path: Optional[str] = None, index_path: Optional[str] = None) -> DatasetVectorStore:
+def get_vector_store(
+    dataset_path: Optional[str] = None, index_path: Optional[str] = None
+) -> DatasetVectorStore:
     if not dataset_path:
         dataset_path = QA_DATASET_PATH
     if not index_path:
@@ -30,7 +32,13 @@ def get_vector_store(dataset_path: Optional[str] = None, index_path: Optional[st
     return DatasetVectorStore(dataset, embedding, index_path=index_path)
 
 
-def get_qa_session(model_config: ModelConfig, engine: InferenceEngine, vector_store: VectorStore, debug: bool = True, **kwargs) -> QASession:
+def get_qa_session(
+    model_config: ModelConfig,
+    engine: InferenceEngine,
+    vector_store: VectorStore,
+    debug: bool = True,
+    **kwargs
+) -> QASession:
     # Conversation/contexts for each session
     if "qa_session" not in st.session_state:
         qa_session = QASession.from_model_config(
@@ -79,8 +87,12 @@ def render_app(
                 value=True,
             )
             num_contexts = st.number_input(label="Num Contexts", min_value=0, value=num_contexts)
-            max_new_tokens = st.number_input(label="Max New Tokens", min_value=1, value=max_new_tokens)
-            temperature = st.slider(label="Temperature", min_value=0.0, max_value=1.0, step=0.05, value=temperature)
+            max_new_tokens = st.number_input(
+                label="Max New Tokens", min_value=1, value=max_new_tokens
+            )
+            temperature = st.slider(
+                label="Temperature", min_value=0.0, max_value=1.0, step=0.05, value=temperature
+            )
             top_p = st.slider(label="Top P", min_value=0.0, max_value=1.0, step=0.05, value=top_p)
             st.form_submit_button(label="Apply")
 
@@ -98,7 +110,9 @@ def render_app(
         # Rephrase and search for contexts
         with st.spinner("Searching..."):
             if rephrase_question:
-                search_query = qa_session.rephrase_question(user_input, temperature=temperature, top_p=top_p)
+                search_query = qa_session.rephrase_question(
+                    user_input, temperature=temperature, top_p=top_p
+                )
             else:
                 search_query = user_input
             st.session_state["search_query"] = search_query
@@ -112,13 +126,20 @@ def render_app(
             st.caption(st.session_state["search_query"])
         with st.form(key="checklists"):
             for i, doc in enumerate(qa_session.results):
-                include = st.checkbox("include in chat context", key=i, value=True, disabled=search_new_context)
+                include = st.checkbox(
+                    "include in chat context", key=i, value=True, disabled=search_new_context
+                )
                 included.append(include)
                 st.write(doc.page_content)
-                st.json({k: v for k, v in doc.metadata.items() if k != DataFields.EMBEDDING}, expanded=False)
+                st.json(
+                    {k: v for k, v in doc.metadata.items() if k != DataFields.EMBEDDING},
+                    expanded=False,
+                )
                 st.divider()
 
-            checklist_submitted = st.form_submit_button(label="Filter", disabled=(not qa_session.results))
+            checklist_submitted = st.form_submit_button(
+                label="Filter", disabled=(not qa_session.results)
+            )
             if checklist_submitted:
                 filter_contexts(qa_session, included)
 

@@ -37,6 +37,7 @@ class DatasetParser:
     Pass multiple embedding devices to support multiprocessed embeddings.
     Each should be running on a different device (e.g. GPU1, GPU2,...)
     """
+
     def __init__(self, *embedding_devices: Embeddings) -> None:
         self.embedding_devices = embedding_devices
 
@@ -63,6 +64,7 @@ class DatasetParser:
             source_id_field: Use custom ID column instead of generating UUIDs
             include_meta: Filter columns that will be kept along with text and ID
         """
+
         def _parse_batch(
             batch: Dict[str, List],
             source_text_field: str,
@@ -123,6 +125,7 @@ class DatasetParser:
 
         Map ID -> DOC_ID, and assign a new ID to each split
         """
+
         def _split_batch(
             batch: Dict[str, List],
         ) -> Dict:
@@ -169,6 +172,7 @@ class DatasetParser:
         """
         Compute semantic embeddings for the text field and add to the dataset
         """
+
         def _embed_batch(batch: Dict[str, List], rank: Optional[int]) -> Dict:
             texts = batch[DataFields.TEXT]
             embeddings = self.embedding(rank).embed_documents(texts)
@@ -180,7 +184,11 @@ class DatasetParser:
         self._validate(dataset, exclude=[DataFields.EMBEDDING])
         logger.info("Embedding dataset")
         return dataset.map(
-            _embed_batch, batched=True, batch_size=batch_size, num_proc=len(self.embedding_devices), with_rank=True
+            _embed_batch,
+            batched=True,
+            batch_size=batch_size,
+            num_proc=len(self.embedding_devices),
+            with_rank=True,
         )
 
     def index(

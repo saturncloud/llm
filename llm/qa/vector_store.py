@@ -17,6 +17,7 @@ class DatasetVectorStore(VectorStore):
     Implements langchain's VectorStore interface on a huggingface dataset
     with FAISS for semantic search.
     """
+
     def __init__(
         self,
         dataset: Dataset,
@@ -56,9 +57,7 @@ class DatasetVectorStore(VectorStore):
         for row in dataset:
             self.dataset.add_item(row)
 
-    def similarity_search(
-        self, query: str, k: int = 4, **kwargs: Any
-    ) -> List[Document]:
+    def similarity_search(self, query: str, k: int = 4, **kwargs: Any) -> List[Document]:
         query_embedding = self.embedding.embed_query(query)
         np_embedding = np.asarray(query_embedding, dtype=np.float32)
         results = self.dataset.search(self.index_name, np_embedding, k, **kwargs)

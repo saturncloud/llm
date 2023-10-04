@@ -23,18 +23,18 @@ class TrainingFormatConverter:
         self,
         prompt: Prompt,
         tokenizer: PreTrainedTokenizer,
-        max_length: int,
+        chunksize: int,
         ignore_index: int = -100,
     ):
         self.prompt = prompt
         self.tokenizer = tokenizer
-        self.max_length = max_length
+        self.chunksize = chunksize
         self.ignore_index = ignore_index
 
     def __call__(self, batch: Dict[str, List]) -> Dict[str, List]:
         prompt = self.prompt
         tokenizer = self.tokenizer
-        max_length = self.max_length
+        chunksize = self.chunksize
         ignore_index = self.ignore_index
         num_rows = len(batch["input"])
         output = {}
@@ -56,13 +56,13 @@ class TrainingFormatConverter:
             if tokenizer.eos_token_id is not None and input_ids[-1] != tokenizer.eos_token_id:
                 input_ids.append(tokenizer.eos_token_id)
 
-            if len(input_ids) >= max_length:
+            if len(input_ids) >= chunksize:
                 continue
 
             input_ids = torch.tensor(input_ids)
             labels = copy.deepcopy(input_ids)
             labels[:prompt_length] = ignore_index
-            attention_mask = input_ids.ge(0).float().half()
+            attention_mask = input_ids.ge(0).ffloat().half()
             output.setdefault("input_ids", []).append(input_ids)
             output.setdefault("attention_mask", []).append(attention_mask)
             output.setdefault("labels", []).append(labels)
@@ -191,18 +191,18 @@ def prepare_for_training(
     dataset: Dataset,
     prompt: Prompt,
     tokenizer: PreTrainedTokenizer,
-    max_length: int,
+    chunksize: int,
     ignore_index: int = -100,
     num_proc: int = 1,
 ) -> Dataset:
     converter = TrainingFormatConverter(
-        prompt=prompt, tokenizer=tokenizer, max_length=max_length, ignore_index=ignore_index
+        prompt=prompt, tokenizer=tokenizer, chunksize=chunksize, ignore_index=ignore_index
     )
     dataset = dataset.map(
         converter, batched=True, remove_columns=dataset.features, num_proc=num_proc
     )
     concatenator = Concatenator(
-        chunk_size=max_length,
+        chunk_size=chunksize,
         total_number_of_examples=len(dataset),
         unk_id=0,
         ignore_index=ignore_index,
@@ -224,4 +224,6 @@ def _run(config: Dict[str, Any]):
     dataset = dataprep_config.source.load()
     tokenizer = AutoTokenizer.from_pretrained(dataprep_config.base_model)
     model_config = ModelConfig.from_registry(config["base_model"])
-    prompt = dataprep_config.prompt
+    prompt = dataprep_config.prompt_config.load(model_config.format)
+    dataset = prepare_for_training(dataset, tokenizer, dataprep_config.chunksize, dataprep_config.ignore_index, dataprep_config.num_proc)
+    # dataset.to_parquet(dataprep_config.)

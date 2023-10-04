@@ -11,8 +11,10 @@ import torch
 from saturnfs import SaturnFS
 import fsspec
 
-fsspec.register_implementation("sfs", SaturnFS)
+from llm.prompt import Prompt
+from llm.qa.prompts import ZeroShotQA, FewShotQA, StandaloneQuestion
 
+fsspec.register_implementation("sfs", SaturnFS)
 
 
 class ConfigError(Exception):
@@ -92,7 +94,7 @@ class DatasetConfig:
     kwargs: Dict[str, Any]
 
     @classmethod
-    def from_config(cls, method, **kwargs) -> DatasetConfig:
+    def from_config(cls, method, **kwargs) -> "DatasetConfig":
         method = config
         return cls(method=method, kwargs=kwargs)
 
@@ -106,7 +108,7 @@ class DatasetConfig:
 
 
 def default_training_arguments(
-    eval_dataset: Optional[Union[LoadDatasetConfig, LoadFromDiskConfig]],
+    eval_dataset: Optional[DatasetConfig],
     experiment_tracking_config: Optional[ExperimentTrackingConfig] = None,
 ) -> Dict[str, Any]:
     defaults = dict(
@@ -129,6 +131,7 @@ def default_training_arguments(
         defaults.update({"report_to": [experiment_tracking_config.report_to]})
     return defaults
 
+db.foo()
 
 @dataclass
 class FineTuneConfig:
@@ -231,11 +234,42 @@ def load_config(
         return cls(**kwargs)
 
 
+prompt_methods = {}
+
+
+@dataclass
+class PromptConfig:
+    method: str
+    kwargs: Dict[str, Any]
+
+    @classmethod
+    def register(cls, name, method) -> None:
+        prompt_methods[name] = method
+
+    def load(self, format):
+        method = prompt_methods[self.method]
+        return method(format=format, **kwargs)
+
+
+PromptConfig.register(Prompt.__name__, Prompt)
+PromptConfig.register(ZeroShotQA.__name__, ZeroShotQA)
+PromptConfig.register(FewShotQA.__name__, FewShotQA)
+PromptConfig.register(StandaloneQuestion.__name__, StandaloneQuestion)
+
+
 @dataclass
 class DataPrepConfig:
-    source: Union[LoadDatasetConfig, LoadFromDiskConfig]
+    source: DatasetConfig
     base_model: str
+    prompt_config: PromptConfig
+    output_directory: str
+    # pack examples into chunks of chunksize.
+    # examples that are bigger than this will be excluded.
+    chunksize: int = 2048
+    ignore_index: int = -100
+    num_proc: int = 1
 
     @classmethod
     def from_config(cls, **config: Dict[str, Any]) -> "DataPrepConfig":
-        return cls(**config)
+        prompt_config = load_config(PromptConfig, config.get('prompt_config', None))
+        return cls(prompt_config=prompt_config, **config)

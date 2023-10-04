@@ -6,5 +6,3 @@ try:
     import wandb
 except ImportError:
     pass
-
-db.foo()

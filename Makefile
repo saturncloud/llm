@@ -18,3 +18,8 @@ chat-streamlit:
 .PHONY: format
 format:
 	black -l 100 .
+
+.PHONY: test
+test:
+	pytest tests
+

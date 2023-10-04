@@ -13,6 +13,7 @@ from transformers import (
     PreTrainedTokenizerBase,
     __version__ as TRANSFORMERS_VERSION,
 )
+from transformers.modeling_utils import is_peft_available
 
 from llm.prompt import (
     ChatMLFormat,
@@ -89,9 +90,14 @@ class ModelConfig:
         if model_id in _registry:
             cls = _registry[model_id]
         else:
-            logging.warn(
-                f'ModelConfig "{model_id}" not found in registry. Using generic configuration.'
-            )
+            peft_base_id = fetch_peft_base(model_id)
+            if peft_base_id and peft_base_id in _registry:
+                cls = _registry[peft_base_id]
+                kwargs["peft_base_id"] = peft_base_id
+            else:
+                logging.warn(
+                    f'ModelConfig "{model_id}" not found in registry. Using generic configuration.'
+                )
 
         return cls(model_id=model_id, **kwargs)
 
@@ -140,6 +146,18 @@ def trim_model_path(model_id: str) -> str:
     if os.path.isdir(model_id) and model_id.endswith("/"):
         return model_id.rstrip("/")
     return model_id
+
+
+def fetch_peft_base(model_id: str) -> Optional[str]:
+    if is_peft_available():
+        from peft import PeftConfig
+
+        try:
+            config = PeftConfig.from_pretrained(model_id)
+            return config.base_model_name_or_path
+        except Exception:
+            pass
+    return None
 
 
 @dataclass

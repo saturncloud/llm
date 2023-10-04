@@ -8,7 +8,7 @@ from typing import Dict, List, Any
 import copy
 
 import click
-from datasets import Dataset
+from datasets import Dataset, Sequence, Value, Features
 from ruamel.yaml import YAML
 from transformers import PreTrainedTokenizer, AutoTokenizer
 import torch
@@ -41,15 +41,18 @@ class TrainingFormatConverter:
         for idx in range(num_rows):
             input_content = batch["input"][idx]
             response_content = batch["response"][idx]
-            contexts = batch["contexts"][idx]
-            input_message = Message(input=input_content, repsonse="", contexts=contexts)
+            if "contexts" in batch:
+                contexts = batch["contexts"][idx]
+            else:
+                contexts = None
+            input_message = Message(input=input_content, response="", contexts=contexts)
             full_message = Message(
-                input=input_content, repsonse=response_content, contexts=contexts
+                input=input_content, response=response_content, contexts=contexts
             )
-            input_prompt = prompt.render(input_message)
-            full_text = prompt.render(full_message)
+            input_prompt = prompt.render([input_message])
+            full_text = prompt.render([full_message])
             prompt_length = len(tokenizer.encode(input_prompt))
-            input_ids = tokenizer.encode(full_message)
+            input_ids = tokenizer.encode(full_text)
 
             if tokenizer.bos_token_id is not None and input_ids[0] != tokenizer.bos_token_id:
                 input_ids.insert(tokenizer.bos_token_id, 0)
@@ -62,7 +65,7 @@ class TrainingFormatConverter:
             input_ids = torch.tensor(input_ids)
             labels = copy.deepcopy(input_ids)
             labels[:prompt_length] = ignore_index
-            attention_mask = input_ids.ge(0).ffloat().half()
+            attention_mask = input_ids.ge(0).short()
             output.setdefault("input_ids", []).append(input_ids)
             output.setdefault("attention_mask", []).append(attention_mask)
             output.setdefault("labels", []).append(labels)
@@ -218,7 +221,17 @@ def prepare_for_training(
         prompt=prompt, tokenizer=tokenizer, chunksize=chunksize, ignore_index=ignore_index
     )
     dataset = dataset.map(
-        converter, batched=True, remove_columns=dataset.features, num_proc=num_proc
+        converter,
+        batched=True,
+        remove_columns=dataset.features,
+        num_proc=num_proc,
+        features=Features(
+            {
+                "input_ids": Sequence(Value(dtype="int32")),
+                "labels": Sequence(Value(dtype="int32")),
+                "attention_mask": Sequence(Value(dtype="int16")),
+            }
+        ),
     )
     concatenator = Concatenator(
         chunk_size=chunksize,
@@ -226,7 +239,19 @@ def prepare_for_training(
         unk_id=0,
         ignore_index=ignore_index,
     )
-    dataset = dataset.map(concatenator, batched=True, with_indices=True, num_proc=1)
+    dataset = dataset.map(
+        concatenator,
+        batched=True,
+        with_indices=True,
+        num_proc=1,
+        features=Features(
+            {
+                "input_ids": Sequence(Value(dtype="int32")),
+                "labels": Sequence(Value(dtype="int32")),
+                "attention_mask": Sequence(Value(dtype="int16")),
+            }
+        ),
+    )
     return dataset
 
 
@@ -240,15 +265,20 @@ def run(config_path: str):
 
 def _run(config: Dict[str, Any]):
     dataprep_config = DataPrepConfig.from_config(**config)
-    dataset = dataprep_config.source.load()
+    dataset = dataprep_config.source_config.load()
     tokenizer = AutoTokenizer.from_pretrained(dataprep_config.base_model)
     model_config = ModelConfig.from_registry(config["base_model"])
     prompt = dataprep_config.prompt_config.load(model_config.format)
     dataset = prepare_for_training(
         dataset,
+        prompt,
         tokenizer,
         dataprep_config.chunksize,
         dataprep_config.ignore_index,
         dataprep_config.num_proc,
     )
-    # dataset.to_parquet(dataprep_config.)
+    dataprep_config.dataset_writer_config.save(dataset)
+
+
+if __name__ == "__main__":
+    run()

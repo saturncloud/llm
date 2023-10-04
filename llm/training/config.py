@@ -38,7 +38,7 @@ class ExperimentTrackingConfig:
     """
 
     method: str
-    kwargs: Dict[str, Any]
+    kwargs: Dict[str, Any] = field(default_factory=dict)
     report_to: List[str] = field(default_factory=list)
 
     @classmethod
@@ -97,10 +97,6 @@ class DatasetConfig:
     method: str
     kwargs: Dict[str, Any]
 
-    @classmethod
-    def from_config(cls, method, **kwargs) -> "DatasetConfig":
-        return cls(method=method, kwargs=kwargs)
-
     def load(self) -> Dataset:
         method = dataset_method_registry[self.method]
         return method(**self.kwargs)
@@ -108,6 +104,10 @@ class DatasetConfig:
     @classmethod
     def register(cls, name: str, method: Any):
         dataset_method_registry[name] = method
+
+
+DatasetConfig.register("load_from_disk", load_from_disk)
+DatasetConfig.register("load_dataset", load_dataset)
 
 
 def default_training_arguments(
@@ -242,7 +242,7 @@ prompt_methods = {}
 @dataclass
 class PromptConfig:
     method: str
-    kwargs: Dict[str, Any]
+    kwargs: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def register(cls, name, method) -> None:
@@ -259,12 +259,34 @@ PromptConfig.register(FewShotQA.__name__, FewShotQA)
 PromptConfig.register(StandaloneQuestion.__name__, StandaloneQuestion)
 
 
+dataset_writers = {}
+
+
+@dataclass
+class DatasetWriterConfig:
+    method: str
+    kwargs: Dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def register(cls, name, method):
+        dataset_writers[name] = method
+
+    def save(self, dataset: Dataset):
+        method = dataset_writers[self.method]
+        method(dataset, **self.kwargs)
+
+
+DatasetWriterConfig.register(
+    "save_to_disk", lambda dataset, dataset_path: dataset.save_to_disk(dataset_path)
+)
+
+
 @dataclass
 class DataPrepConfig:
-    source: DatasetConfig
+    source_config: DatasetConfig
     base_model: str
     prompt_config: PromptConfig
-    output_directory: str
+    dataset_writer_config: DatasetWriterConfig
     # pack examples into chunks of chunksize.
     # examples that are bigger than this will be excluded.
     chunksize: int = 2048
@@ -273,5 +295,14 @@ class DataPrepConfig:
 
     @classmethod
     def from_config(cls, **config: Dict[str, Any]) -> "DataPrepConfig":
-        prompt_config = load_config(PromptConfig, config.get("prompt_config", None))
-        return cls(prompt_config=prompt_config, **config)
+        prompt_config = load_config(PromptConfig, config.pop("prompt_config", None))
+        source_config = load_config(DatasetConfig, config.pop("source_config"))
+        dataset_writer_config = load_config(
+            DatasetWriterConfig, config.pop("dataset_writer_config", None)
+        )
+        return cls(
+            prompt_config=prompt_config,
+            source_config=source_config,
+            dataset_writer_config=dataset_writer_config,
+            **config
+        )

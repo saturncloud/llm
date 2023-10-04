@@ -50,8 +50,8 @@ class ModelConfig:
     Stores model and tokenizer configuration for
     pretrained huggingface models.
 
-    PEFT models use their peft adapter name as model_id,
-    and set the base model ID in peft_base_id.
+    PEFT models may be loaded by their adapter model_id
+    assuming they have been properly created with adapter_config.json
     """
 
     model_id: str = ""
@@ -61,13 +61,9 @@ class ModelConfig:
     tokenizer_kwargs: Dict[str, Any] = field(default_factory=dict)
     model_cls: Optional[Type[PreTrainedModel]] = None
     tokenizer_cls: Optional[Type[PreTrainedTokenizerBase]] = None
-    peft_base_id: Optional[str] = None
-    peft_kwargs: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         self.model_id = trim_model_path(self.model_id)
-        if self.peft_base_id:
-            self.peft_base_id = trim_model_path(self.peft_base_id)
 
     def __init_subclass__(cls) -> None:
         if cls.model_id:
@@ -93,7 +89,6 @@ class ModelConfig:
             peft_base_id = fetch_peft_base(model_id)
             if peft_base_id and peft_base_id in _registry:
                 cls = _registry[peft_base_id]
-                kwargs["peft_base_id"] = peft_base_id
             else:
                 logging.warn(
                     f'ModelConfig "{model_id}" not found in registry. Using generic configuration.'
@@ -121,13 +116,7 @@ class ModelConfig:
             **self.model_kwargs,
             **kwargs,
         }
-        model_id = self.model_id if not self.peft_base_id else self.peft_base_id
-        model = model_cls.from_pretrained(model_id, **model_kwargs)
-        if self.peft_base_id:
-            from peft import PeftModel
-
-            model = PeftModel.from_pretrained(model, self.model_id, **self.peft_kwargs)
-        return model
+        return model_cls.from_pretrained(self.model_id, **model_kwargs)
 
     def load_tokenizer(self, **kwargs) -> PreTrainedTokenizerBase:
         tokenizer_cls = self.tokenizer_cls or AutoTokenizer
@@ -135,8 +124,7 @@ class ModelConfig:
             **self.tokenizer_kwargs,
             **kwargs,
         }
-        model_id = self.model_id if not self.peft_base_id else self.peft_base_id
-        return tokenizer_cls.from_pretrained(model_id, **tokenizer_kwargs)
+        return tokenizer_cls.from_pretrained(self.model_id, **tokenizer_kwargs)
 
 
 def trim_model_path(model_id: str) -> str:

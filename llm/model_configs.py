@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple, Type, Union
@@ -24,7 +23,9 @@ from llm.prompt import (
     TogetherLlama2Format,
     VicunaFormat,
 )
+from llm.utils.logs import get_logger
 
+logger = get_logger()
 _registry: Dict[str, Type[ModelConfig]] = {}
 
 
@@ -83,18 +84,21 @@ class ModelConfig:
         Load model config from the registry
         """
         model_id = trim_model_path(model_id)
+        config_cls = cls
         if model_id in _registry:
-            cls = _registry[model_id]
+            config_cls = _registry[model_id]
         else:
             peft_base_id = fetch_peft_base(model_id)
             if peft_base_id and peft_base_id in _registry:
-                cls = _registry[peft_base_id]
+                config_cls = _registry[peft_base_id]
             else:
-                logging.warn(
+                logger.warn(
                     f'ModelConfig "{model_id}" not found in registry. Using generic configuration.'
                 )
+        if not (cls == config_cls or issubclass(config_cls, cls)):
+            logger.warn(f'Registry entry for "{model_id}" {config_cls} is not a subclass of {cls}')
 
-        return cls(model_id=model_id, **kwargs)
+        return config_cls(model_id=model_id, **kwargs)
 
     def load(
         self,

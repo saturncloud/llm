@@ -11,6 +11,7 @@ import torch
 from saturnfs import SaturnFS
 import fsspec
 
+from llm.model_configs import ModelConfig
 from llm.prompt import Prompt
 from llm.qa.prompts import ZeroShotQA, FewShotQA, StandaloneQuestion
 
@@ -71,17 +72,20 @@ def init_comet_ml(
     return experiment
 
 
-def init_wandb(config: ExperimentTrackingConfig, wandb_project: Optional[str] = None, wandb_log_model: str = "all"):
+def init_wandb(
+    config: ExperimentTrackingConfig,
+    wandb_project: Optional[str] = None,
+    wandb_log_model: str = "all",
+):
     if wandb_project:
-        os.eviron["WANDB_PROJECT"] = wandb_project
+        os.environ["WANDB_PROJECT"] = wandb_project
     if wandb_log_model:
-        os.eviron["WANDB_LOG_MODEL"] = wandb_log_model
+        os.environ["WANDB_LOG_MODEL"] = wandb_log_model
     config.report_to = ["wandb"]
 
 
 ExperimentTrackingConfig.register("comet_ml", init_comet_ml)
 ExperimentTrackingConfig.register("wandb", init_wandb)
-
 
 
 dataset_method_registry = {}
@@ -95,11 +99,10 @@ class DatasetConfig:
 
     @classmethod
     def from_config(cls, method, **kwargs) -> "DatasetConfig":
-        method = config
         return cls(method=method, kwargs=kwargs)
 
     def load(self) -> Dataset:
-        method = dataset_method_registry[self.name]
+        method = dataset_method_registry[self.method]
         return method(**self.kwargs)
 
     @classmethod
@@ -111,7 +114,7 @@ def default_training_arguments(
     eval_dataset: Optional[DatasetConfig],
     experiment_tracking_config: Optional[ExperimentTrackingConfig] = None,
 ) -> Dict[str, Any]:
-    defaults = dict(
+    defaults: Dict[str, Any] = dict(
         bf16=False,
         optim="adamw_torch",
         num_train_epochs=1,
@@ -131,12 +134,11 @@ def default_training_arguments(
         defaults.update({"report_to": [experiment_tracking_config.report_to]})
     return defaults
 
-db.foo()
 
 @dataclass
 class FineTuneConfig:
     base_model: str
-    train_dataset_config: DatsetConfig
+    train_dataset_config: DatasetConfig
     training_arguments: TrainingArguments
     lora_config: LoraConfig
     experiment_tracking_config: Optional[ExperimentTrackingConfig] = None
@@ -162,7 +164,9 @@ class FineTuneConfig:
             f = tempfile.mkdtemp()
             config["local_output"] = f
 
-        experiment_tracking_config = load_config(ExperimentTrackingConfig, config.pop("experiment_tracking_config", None))
+        experiment_tracking_config = load_config(
+            ExperimentTrackingConfig, config.pop("experiment_tracking_config", None)
+        )
         train_dataset_config = load_config(DatasetConfig, config.pop("train_dataset_config"))
         eval_dataset_config = load_config(DatasetConfig, config.pop("eval_dataset_config"))
 
@@ -223,9 +227,7 @@ class CopyToSourcesCallback(TrainerCallback):
         self.rsync()
 
 
-def load_config(
-    cls: type, kwargs: Optional[Dict[str, Any]]
-) -> Any:
+def load_config(cls: type, kwargs: Optional[Dict[str, Any]]) -> Any:
     if kwargs is None:
         return None
     if hasattr(cls, "from_config"):
@@ -248,7 +250,7 @@ class PromptConfig:
 
     def load(self, format):
         method = prompt_methods[self.method]
-        return method(format=format, **kwargs)
+        return method(format=format, **self.kwargs)
 
 
 PromptConfig.register(Prompt.__name__, Prompt)
@@ -271,5 +273,5 @@ class DataPrepConfig:
 
     @classmethod
     def from_config(cls, **config: Dict[str, Any]) -> "DataPrepConfig":
-        prompt_config = load_config(PromptConfig, config.get('prompt_config', None))
+        prompt_config = load_config(PromptConfig, config.get("prompt_config", None))
         return cls(prompt_config=prompt_config, **config)

@@ -12,7 +12,6 @@ from ruamel.yaml import YAML
 
 from llm.training.config import FineTuneConfig, CopyToSourcesCallback
 
-db.foo()
 
 WORLD_SIZE = int(os.getenv("WORLD_SIZE", 1))
 LOCAL_RANK = int(os.getenv("LOCAL_RANK", 0))

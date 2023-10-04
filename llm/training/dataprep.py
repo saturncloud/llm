@@ -71,6 +71,8 @@ class TrainingFormatConverter:
 
 
 class Concatenator(object):
+    fields = ["input_ids", "attention_mask", "labels"]
+
     def __init__(
         self,
         chunk_size: int,
@@ -78,7 +80,6 @@ class Concatenator(object):
         unk_id: int = 0,
         ignore_index: int = -100,
     ):
-        self.fields = ["input_ids", "attention_mask", "labels"]
         self.total_number_of_examples = total_number_of_examples
         self.chunk_size = chunk_size
         self.residual = {"input_ids": [], "attention_mask": [], "labels": []}
@@ -110,7 +111,7 @@ class Concatenator(object):
         returns the number of items in the last row of what we are about to output
         """
         self.ensure_output_is_initialized()
-        return len(self.output["input_ids"][0])
+        return len(self.output["input_ids"][-1])
 
     def rows_to_process(self):
         """
@@ -140,9 +141,9 @@ class Concatenator(object):
         finalizes the last output. pads it to max length, and
         initializes the next empty output for continued processing
         """
+        to_pad = self.chunk_size - self.last_output_length()
         for f in self.fields:
-            to_pad = self.chunk_size - self.last_output_length()
-            self.output[f][-1].extend(to_pad * self.pad_value[f])
+            self.output[f][-1].extend(to_pad * [self.pad_value[f]])
 
     def move_last_output_row_to_residual(self):
         """
@@ -150,7 +151,7 @@ class Concatenator(object):
         the final batch of the dataset. This method moves the last row to the residual
         """
         for f in self.fields:
-            self.residual[f] = self.output[f][-1]
+            self.residual[f] = [self.output[f][-1]]
             self.output[f].pop(-1)
 
     def check_for_input_too_long(self):
@@ -165,9 +166,25 @@ class Concatenator(object):
     def can_accumulate_without_exceeding_chunk_size(self):
         return (self.last_output_length() + self.next_input_length()) <= self.chunk_size
 
-    def __call__(self, batch: Dict[str, List], idx: List[int]):
-        is_last_batch = max(idx) == self.total_number_of_examples - 1
+    @classmethod
+    def concat(cls, batch1: Dict[str, List], batch2: Dict[str, List]) -> Dict[str, List]:
+        output = {}
+        for f in cls.fields:
+            output[f] = batch1.get(f, []) + batch2.get(f, [])
+        return output
 
+    def prepare_data_to_process(self, batch: Dict[str, List]):
+        """
+        combines the residual with the new batch
+        """
+        self.to_process = self.concat(self.residual, batch)
+
+    def __call__(self, batch: Dict[str, List], idx: List[int]):
+        self.output = None
+        self.ensure_output_is_initialized()
+        self.prepare_data_to_process(batch)
+
+        is_last_batch = max(idx) == self.total_number_of_examples - 1
         while self.rows_to_process() > 0:
             if self.check_for_input_too_long():
                 raise ValueError("input is too long to be accumulated")
@@ -184,7 +201,9 @@ class Concatenator(object):
             self.pad_last_output_row()
         else:
             self.move_last_output_row_to_residual()
-        return self.output
+        output = self.output
+        self.output = None
+        return output
 
 
 def prepare_for_training(
@@ -225,5 +244,11 @@ def _run(config: Dict[str, Any]):
     tokenizer = AutoTokenizer.from_pretrained(dataprep_config.base_model)
     model_config = ModelConfig.from_registry(config["base_model"])
     prompt = dataprep_config.prompt_config.load(model_config.format)
-    dataset = prepare_for_training(dataset, tokenizer, dataprep_config.chunksize, dataprep_config.ignore_index, dataprep_config.num_proc)
+    dataset = prepare_for_training(
+        dataset,
+        tokenizer,
+        dataprep_config.chunksize,
+        dataprep_config.ignore_index,
+        dataprep_config.num_proc,
+    )
     # dataset.to_parquet(dataprep_config.)

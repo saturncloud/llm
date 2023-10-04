@@ -24,7 +24,9 @@ from llm.prompt import (
     TogetherLlama2Format,
     VicunaFormat,
 )
+from llm.utils.logs import get_logger
 
+logger = get_logger()
 _registry: Dict[str, Type[ModelConfig]] = {}
 
 
@@ -90,7 +92,7 @@ class ModelConfig:
             if peft_base_id and peft_base_id in _registry:
                 cls = _registry[peft_base_id]
             else:
-                logging.warn(
+                logger.warn(
                     f'ModelConfig "{model_id}" not found in registry. Using generic configuration.'
                 )
 

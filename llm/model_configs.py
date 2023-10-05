@@ -128,7 +128,15 @@ class ModelConfig:
             **self.tokenizer_kwargs,
             **kwargs,
         }
-        return tokenizer_cls.from_pretrained(self.model_id, **tokenizer_kwargs)
+        try:
+            return tokenizer_cls.from_pretrained(self.model_id, **tokenizer_kwargs)
+        except Exception as e:
+            # Check if model_id is a PEFT adapter
+            peft_base_id = fetch_peft_base(self.model_id)
+            if peft_base_id:
+                # Load base model's tokenizer
+                return tokenizer_cls.from_pretrained(peft_base_id, **tokenizer_kwargs)
+            raise e
 
 
 def trim_model_path(model_id: str) -> str:

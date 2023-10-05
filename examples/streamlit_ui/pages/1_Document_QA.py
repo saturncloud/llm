@@ -11,6 +11,8 @@ from llm.qa.session import QASession
 from llm.qa.vector_store import DatasetVectorStore
 from llm.utils.data import load_data
 
+from examples.streamlit_ui.components import chat_bubble, generation_settings, get_engine, setup_page
+
 QA_DATASET_PATH = os.environ["QA_DATASET_PATH"]
 QA_INDEX_PATH = os.getenv("QA_INDEX_PATH")
 QA_CONTEXT_MODEL = os.getenv("QA_CONTEXT_MODEL", DEFAULT_MODEL)
@@ -44,33 +46,41 @@ def get_qa_session(
         qa_session = QASession.from_model_config(
             model_config, vector_store, engine=engine, debug=debug, **kwargs
         )
-        st.session_state["qa_session"] = qa_session
+        st.session_state.qa_session = qa_session
         return qa_session
-    return st.session_state["qa_session"]
+    return st.session_state.qa_session
 
 
-def render_app(
-    qa_session: QASession,
-    temperature: float = 0.7,
-    top_p: float = 0.9,
-    max_new_tokens: int = 256,
-    num_contexts: int = 3,
-):
-    st.header("Document Chat", divider="grey", anchor=False)
+def filter_contexts(qa_session: QASession, included: List[bool]):
+    # Filter which contexts are seen by the LLM for the next question
+    contexts = []
+    for doc, to_include in zip(qa_session.results, included):
+        if to_include:
+            contexts.append(doc.page_content)
+
+    qa_session.set_contexts(contexts)
+
+
+if __name__ == "__main__":
+    setup_page("Document QA")
+
+    engine = get_engine()
+    vector_store = get_vector_store()
+    qa_session = get_qa_session(st.session_state.model_config, engine, vector_store)
+
     chat_container = st.container()
-    clear_convo = st.button("clear conversation")
+    clear_convo = st.button("Clear")
     if clear_convo:
         # Clear conversation, but keep system prompt in case the
         # user wants to re-query over the previous context.
         qa_session.clear(keep_results=True)
-        query_submitted = False
 
     with st.form(key="input_form", clear_on_submit=True):
         # Collect user input
         user_input = st.text_area("Query:", key="input", height=100)
         contexts_only = st.checkbox(label="Contexts only", value=False)
         query_submitted = st.form_submit_button(label="Submit")
-        if query_submitted and not user_input:
+        if clear_convo or (query_submitted and not user_input):
             query_submitted = False
 
     with st.sidebar:
@@ -86,14 +96,8 @@ def render_app(
                 key="search_new_context",
                 value=True,
             )
-            num_contexts = st.number_input(label="Num Contexts", min_value=0, value=num_contexts)
-            max_new_tokens = st.number_input(
-                label="Max New Tokens", min_value=1, value=max_new_tokens
-            )
-            temperature = st.slider(
-                label="Temperature", min_value=0.0, max_value=1.0, step=0.05, value=temperature
-            )
-            top_p = st.slider(label="Top P", min_value=0.0, max_value=1.0, step=0.05, value=top_p)
+            num_contexts = st.number_input(label="Num Contexts", min_value=0, value=3)
+            generation_kwargs = generation_settings()
             st.form_submit_button(label="Apply")
 
     # Write current chat
@@ -111,11 +115,14 @@ def render_app(
         with st.spinner("Searching..."):
             if rephrase_question:
                 search_query = qa_session.rephrase_question(
-                    user_input, temperature=temperature, top_p=top_p
+                    user_input,
+                    max_new_tokens=256,
+                    temperature=generation_kwargs["temperature"],
+                    top_p=generation_kwargs["top_p"],
                 )
             else:
                 search_query = user_input
-            st.session_state["search_query"] = search_query
+            st.session_state.search_query = search_query
             qa_session.search_context(search_query, top_k=num_contexts)
 
     # Write contexts out to streamlit, with checkboxes to filter what is sent to the LLM
@@ -123,7 +130,7 @@ def render_app(
     with st.sidebar:
         st.header("Contexts")
         if "search_query" in st.session_state:
-            st.caption(st.session_state["search_query"])
+            st.caption(st.session_state.search_query)
         with st.form(key="checklists"):
             for i, doc in enumerate(qa_session.results):
                 include = st.checkbox(
@@ -147,24 +154,5 @@ def render_app(
         # Stream response from LLM, updating chat window at each step
         with chat_container:
             answer = chat_bubble("assistant")
-            for text in qa_session.stream_answer(
-                user_input, max_new_tokens=max_new_tokens, temperature=temperature, top_p=top_p
-            ):
+            for text in qa_session.stream_answer(user_input, **generation_kwargs):
                 answer.write(text)
-
-
-def chat_bubble(role: str, text: str = ""):
-    with st.chat_message(role):
-        text_box = st.text("")
-        text_box.write(text)
-    return text_box
-
-
-def filter_contexts(qa_session: QASession, included: List[bool]):
-    # Filter which contexts are seen by the LLM for the next question
-    contexts = []
-    for doc, to_include in zip(qa_session.results, included):
-        if to_include:
-            contexts.append(doc.page_content)
-
-    qa_session.set_contexts(contexts)

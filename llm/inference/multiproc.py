@@ -90,6 +90,8 @@ class MultiprocessEngine(InferenceEngine):
         # Wait for a worker to be available
         worker = self.queue.get()
         try:
+            # Clear any leftover responses from a previous query
+            worker.clear_responses()
             worker.send_request(request)
             while True:
                 # Yield results until sentinel value is recieved
@@ -151,6 +153,10 @@ class WorkerPipe:
 
     def get_response(self) -> Optional[str]:
         return self.parent_conn.recv()
+
+    def clear_responses(self):
+        while self.parent_conn.poll():
+            self.parent_conn.recv_bytes()
 
     ### Worker methods ####
     def get_request(self) -> StreamRequest:

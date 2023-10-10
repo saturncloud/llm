@@ -11,7 +11,7 @@ from llm.utils.devices import model_to_devices, parse_device
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "sentence-transformers/multi-qa-mpnet-base-dot-v1"
+DEFAULT_EMBEDDING_MODEL = "sentence-transformers/multi-qa-mpnet-base-dot-v1"
 PUBMED_MODEL = "pritamdeka/S-PubMedBert-MS-MARCO"
 
 
@@ -35,7 +35,7 @@ class QAEmbeddings(Embeddings):
 
     def __init__(
         self,
-        context_model: Union[str, PreTrainedModel] = DEFAULT_MODEL,
+        context_model: Union[str, PreTrainedModel] = DEFAULT_EMBEDDING_MODEL,
         context_tokenizer: Optional[PreTrainedTokenizerBase] = None,
         question_model: Optional[Union[str, PreTrainedModel]] = None,
         question_tokenizer: Optional[PreTrainedTokenizerBase] = None,

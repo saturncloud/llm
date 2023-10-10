@@ -12,7 +12,7 @@ chat-cmdline:
 
 .PHONY: chat-streamlit
 chat-streamlit:
-	python llm/qa/cli/main.py chat streamlit
+	streamlit run examples/streamlit_ui/Chat.py
 
 
 .PHONY: format

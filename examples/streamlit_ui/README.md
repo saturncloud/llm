@@ -42,6 +42,16 @@ QA_INDEX_PATH: Path to the dataset's FAISS index built over embeddings (defaults
 QA_CONTEXT_MODEL: Model ID used for embedding questions for context search (default: "sentence-transformers/multi-qa-mpnet-base-dot-v1")
 ```
 
+Or pass them into streamlit run before the backend
+
+```
+streamlit run examples/streamlit_ui/Chat.py -- \
+    --qa-dataset-path <dataset-path> \
+    --qa-index-path <index-path> \
+    --qa-context-model <context-model> \
+    ...
+```
+
 ### Text Summarization
 
 Summarize important information from long passages of text.

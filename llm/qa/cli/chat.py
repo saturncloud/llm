@@ -6,7 +6,7 @@ import click
 
 from llm import settings
 from llm.model_configs import ModelConfig, VicunaConfig
-from llm.qa.embedding import DEFAULT_MODEL, QAEmbeddings
+from llm.qa.embedding import DEFAULT_EMBEDDING_MODEL, QAEmbeddings
 from llm.qa.session import QASession
 from llm.qa.vector_store import DatasetVectorStore
 from llm.utils.data import load_data
@@ -20,6 +20,18 @@ def chat_cli():
 @chat_cli.command("cmdline", short_help="Conversational question answering from semantic search")
 @click.argument("dataset-path", required=True, envvar="QA_DATASET_PATH")
 @click.option(
+    "--model-id",
+    help="Chat model ID for prompt formatting.",
+    default=VicunaConfig.model_id,
+    envvar="DEFAULT_MODEL_ID",
+)
+@click.option(
+    "--context-model",
+    help="Model name or path for context embedding",
+    default=DEFAULT_EMBEDDING_MODEL,
+    envvar="QA_CONTEXT_MODEL",
+)
+@click.option(
     "--dataset-type",
     help="Input file type. Defaults to file extension.",
     default=None,
@@ -30,18 +42,6 @@ def chat_cli():
     help="Path to a pre-built FAISS index over the dataset",
     default=None,
     envvar="QA_INDEX_PATH",
-)
-@click.option(
-    "--model-id",
-    help="Chat model ID for prompt formatting.",
-    default=VicunaConfig.model_id,
-    envvar="QA_CHAT_MODEL",
-)
-@click.option(
-    "--context-model",
-    help="Model name or path for context embedding",
-    default=DEFAULT_MODEL,
-    envvar="QA_CONTEXT_MODEL",
 )
 @click.option(
     "--rephrase", is_flag=True, help="Rephrase the question with context from previous messages"
@@ -89,83 +89,6 @@ def cmdline_cli(
             prev_output = output_text
             print(new_output, end="", flush=True)
         print()
-
-
-@chat_cli.group(
-    "streamlit", short_help="Run a simple Streamlit QA application", invoke_without_command=True
-)
-@click.pass_context
-def streamlit_cli(ctx):
-    if ctx.invoked_subcommand is None:
-        # Default to local transformers
-        ctx.forward(transformers_backend)
-
-
-@streamlit_cli.command("transformers", short_help="Local transformers engine")
-@click.option(
-    "--model-id", help="Chat model ID.", default=VicunaConfig.model_id, envvar="QA_CHAT_MODEL"
-)
-@click.option(
-    "--num-workers",
-    type=int,
-    default=None,
-    help="Number of chat models to run. Defaults to num GPUs",
-)
-@click.option(
-    "--dataset",
-    required=True,
-    help="Path to dataset with contexts. Defaults to env QA_DATASET_PATH",
-    envvar="QA_DATASET_PATH",
-)
-@click.option(
-    "--index",
-    help="Path to a pre-built FAISS index over the dataset. Defaults to env QA_INDEX_PATH or <dataset-name>.faiss",
-    default=None,
-    envvar="QA_INDEX_PATH",
-)
-def transformers_backend(
-    model_id: str, num_workers: Optional[int], dataset: str, index: Optional[str]
-) -> QASession:
-    os.environ["QA_DATASET_PATH"] = dataset
-    if index:
-        os.environ["QA_INDEX_PATH"] = index
-    args = ["--model-id", model_id]
-    if num_workers is not None:
-        args.extend(["--num-workers", num_workers])
-    run_streamlit("transformer_backend", *args)
-
-
-@streamlit_cli.command("vllm-client", short_help="Remote vLLM engine")
-@click.argument("url")
-@click.option(
-    "--model-id",
-    help="Chat model ID for prompt formatting.",
-    default=VicunaConfig.model_id,
-    envvar="QA_CHAT_MODEL",
-)
-@click.option(
-    "--dataset",
-    required=True,
-    help="Path to dataset with contexts. Defaults to env QA_DATASET_PATH",
-    envvar="QA_DATASET_PATH",
-)
-@click.option(
-    "--index",
-    help="Path to a pre-built FAISS index over the dataset. Defaults to env QA_INDEX_PATH or <dataset-name>.faiss",
-    default=None,
-    envvar="QA_INDEX_PATH",
-)
-def vllm_client_backend(url: str, model_id: str, dataset: str, index: Optional[str]) -> QASession:
-    os.environ["QA_DATASET_PATH"] = dataset
-    if index:
-        os.environ["QA_INDEX_PATH"] = index
-    run_streamlit("vllm_client_backend", url, "--model-id", model_id)
-
-
-def run_streamlit(backend: str, *args: str):
-    streamlit_script_path = os.path.join(settings.PROJECT_ROOT, f"qa/streamlit/{backend}.py")
-    sys.argv = ["streamlit", "run", streamlit_script_path, "--", *args]
-    runpy.run_module("streamlit", run_name="__main__")
 
 
 if __name__ == "__main__":

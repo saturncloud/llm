@@ -5,7 +5,7 @@ from langchain.vectorstores.base import VectorStore
 
 from llm.inference.base import InferenceEngine
 from llm.model_configs import ModelConfig, VicunaConfig
-from llm.qa.embedding import DEFAULT_MODEL, QAEmbeddings
+from llm.qa.embedding import DEFAULT_EMBEDDING_MODEL, QAEmbeddings
 from llm.qa.parser import DataFields
 from llm.qa.session import QASession
 from llm.qa.vector_store import DatasetVectorStore
@@ -13,24 +13,14 @@ from llm.utils.data import load_data
 
 from examples.streamlit_ui.components import chat_bubble, generation_settings, get_engine, setup_page
 
-QA_DATASET_PATH = os.environ["QA_DATASET_PATH"]
-QA_INDEX_PATH = os.getenv("QA_INDEX_PATH")
-QA_CONTEXT_MODEL = os.getenv("QA_CONTEXT_MODEL", DEFAULT_MODEL)
-QA_CHAT_MODEL = os.getenv("QA_CHAT_MODEL", VicunaConfig.model_id)
-
 
 @st.cache_resource
 def get_vector_store(
-    dataset_path: Optional[str] = None, index_path: Optional[str] = None
+    context_model: str, dataset_path: str, index_path: Optional[str] = None
 ) -> DatasetVectorStore:
-    if not dataset_path:
-        dataset_path = QA_DATASET_PATH
-    if not index_path:
-        index_path = QA_INDEX_PATH
-
     # VectorStore for semantic search. Shared by all sessions
     dataset = load_data(dataset_path)
-    embedding = QAEmbeddings(QA_CONTEXT_MODEL)
+    embedding = QAEmbeddings(context_model)
     return DatasetVectorStore(dataset, embedding, index_path=index_path)
 
 
@@ -64,8 +54,14 @@ def filter_contexts(qa_session: QASession, included: List[bool]):
 if __name__ == "__main__":
     setup_page("Document QA")
 
+    dataset_path = st.session_state.get("qa_dataset_path")
+    index_path = st.session_state.get("qa_index_path")
+    context_model = st.session_state.get("qa_context_model", DEFAULT_EMBEDDING_MODEL)
+    if not dataset_path:
+        raise Exception("No dataset path given. Unable to run Document QA.")
+
     engine = get_engine()
-    vector_store = get_vector_store()
+    vector_store = get_vector_store(context_model, dataset_path, index_path=index_path)
     qa_session = get_qa_session(st.session_state.model_config, engine, vector_store)
 
     chat_container = st.container()

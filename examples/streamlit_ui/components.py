@@ -7,6 +7,12 @@ import torch
 
 from llm.inference import InferenceEngine, MultiprocessEngine, VLLMClient
 from llm.model_configs import ModelConfig, VicunaConfig, bnb_quantization
+from llm.qa.embedding import DEFAULT_EMBEDDING_MODEL
+
+DEFAULT_MODEL_ID = os.getenv("DEFAULT_MODEL_ID", VicunaConfig.model_id)
+DEFAULT_CONTEXT_MODEL = os.getenv("QA_CONTEXT_MODEL", DEFAULT_EMBEDDING_MODEL)
+DEFAULT_DATASET_PATH = os.getenv("QA_DATASET_PATH")
+DEFAULT_INDEX_PATH = os.getenv("QA_INDEX_PATH")
 
 
 def setup_page(title: str):
@@ -20,46 +26,59 @@ def get_engine() -> InferenceEngine:
         return st.session_state["engine"]
     init_session_state()
 
-    engine_type = st.session_state.get("engine_type", "transformers")
+    backend = st.session_state.get("backend", "transformers")
     engine_kwargs = st.session_state.get("engine_kwargs", {})
 
-    if engine_type == "transformers":
+    if backend == "transformers":
         engine = get_transformers_engine(**engine_kwargs)
-    elif engine_type == "vllm-client":
+    elif backend == "vllm-client":
         engine = get_vllm_client_engine(**engine_kwargs)
     else:
-        raise Exception(f'Unknown engine type "{engine_type}"')
+        raise Exception(f'Unknown engine type "{backend}"')
     st.session_state["engine"] = engine
     return engine
 
 
 def init_session_state():
     parser = ArgumentParser()
+    parser.add_argument(
+        "-d", "--qa-dataset-path", help="Document QA dataset path", default=DEFAULT_DATASET_PATH
+    )
+    parser.add_argument(
+        "-i", "--qa-index-path", help="Document QA FAISS index path", default=DEFAULT_INDEX_PATH
+    )
+    parser.add_argument(
+        "-c",
+        "--qa-context-model",
+        help="Document QA embedding model for vector search",
+        default=DEFAULT_CONTEXT_MODEL,
+    )
+
     subparsers = parser.add_subparsers(help="backend", dest="backend", required=False)
     transformers_parser = subparsers.add_parser("transformers", help="Local transformers engine")
-    transformers_parser.add_argument("-m", "--model-id", help="Chat model ID", default=VicunaConfig.model_id)
+    transformers_parser.add_argument("-m", "--model-id", help="Chat model ID", default=DEFAULT_MODEL_ID)
     transformers_parser.add_argument(
         "-n", "--num-workers", help="Number of chat models to run. Defaults to num GPUs."
     )
     vllm_client_parser = subparsers.add_parser("vllm-client", help="Remote VLLM engine")
-    vllm_client_parser.add_argument("url", help="Base URL for vLLM API")
+    vllm_client_parser.add_argument("--url", required=True, help="Base URL for vLLM API")
     vllm_client_parser.add_argument(
         "-m",
         "--model-id",
         help="Chat model ID for determining prompt format",
-        default=VicunaConfig.model_id,
+        default=DEFAULT_MODEL_ID,
     )
     args = parser.parse_args()
 
     if not args.backend:
         args.backend = "transformers"
-        args.model_id = VicunaConfig.model_id
+        args.model_id = DEFAULT_MODEL_ID
         args.num_workers = None
 
     model_config = ModelConfig.from_registry(args.model_id)
     st.session_state["model_config"] = model_config
-    st.session_state["engine_type"] = args.backend
 
+    # Token generation settings
     st.session_state.setdefault("temperature", 0.7)
     st.session_state.setdefault("top_p", 0.9)
     if model_config.max_length > 2048:
@@ -67,6 +86,13 @@ def init_session_state():
     else:
         st.session_state.setdefault("max_new_tokens", 256)
 
+    # Docstore settings
+    st.session_state["qa_dataset_path"] = args.qa_dataset_path
+    st.session_state["qa_index_path"] = args.qa_index_path
+    st.session_state["qa_context_model"] = args.qa_context_model
+
+    # Backend settings
+    st.session_state["backend"] = args.backend
     if args.backend == "transformers":
         st.session_state["engine_kwargs"] = {
             "model_config": model_config,

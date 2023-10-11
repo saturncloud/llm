@@ -3,3 +3,4 @@ wandb/
 .ipynb_checkpoints
 .idea
 models/
+scratch/

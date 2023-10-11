@@ -12,7 +12,8 @@ from saturnfs import SaturnFS
 import fsspec
 
 from llm.model_configs import ModelConfig
-from llm.prompt import Prompt
+from llm.prompt import Prompt, Role, Message, UserAssistantFormat, RedpajamaFormat, VicunaFormat, Llama2Format, \
+    TogetherLlama2Format, ChatMLFormat, DollyFormat, PromptFormat
 from llm.qa.prompts import ZeroShotQA, FewShotQA, StandaloneQuestion
 
 fsspec.register_implementation("sfs", SaturnFS)
@@ -39,18 +40,19 @@ class ExperimentTrackingConfig:
 
     method: str
     kwargs: Dict[str, Any] = field(default_factory=dict)
-    report_to: List[str] = field(default_factory=list)
+    report_to: Optional[str] = None
+    # holds objects (like experiments) returned by the framework
+    objs: Dict[str, Any] = field(default_factory=dict)
 
-    @classmethod
-    def from_config(cls, method, **kwargs):
-        return cls(method=method, kwargs=kwargs)
+    def __post_init__(self):
+        self.objs = self.begin()
 
     @classmethod
     def register(cls, name, method) -> None:
         experiment_tracking_methods[name] = method
 
     def begin(self):
-        return experiment_tracking_methods[self.method](self, self.kwargs)
+        return experiment_tracking_methods[self.method](self, **self.kwargs)
 
 
 def init_comet_ml(
@@ -59,30 +61,29 @@ def init_comet_ml(
     comet_workspace: Optional[str] = None,
     comet_project_name: Optional[str] = None,
     auto_output_logging=None,
-):
-    from comet_ml import Experiment
-
-    experiment = Experiment(
+) -> Dict[str, Any]:
+    import comet_ml
+    comet_ml.init(
         api_key=comet_api_key or os.getenv("COMET_API_KEY"),
         workspace=comet_workspace or os.getenv("COMET_WORKSPACE"),
         project_name=comet_project_name or os.getenv("COMET_PROJECT_NAME"),
-        auto_output_logging=auto_output_logging or "native",
     )
-    config.report_to = ["comet_ml"]
-    return experiment
+    os.environ["COMET_LOG_ASSETS"] = "True"
+    config.report_to = "comet_ml"
+    return {}
 
 
 def init_wandb(
     config: ExperimentTrackingConfig,
     wandb_project: Optional[str] = None,
     wandb_log_model: str = "all",
-):
+) -> Dict[str, Any]:
     if wandb_project:
         os.environ["WANDB_PROJECT"] = wandb_project
     if wandb_log_model:
         os.environ["WANDB_LOG_MODEL"] = wandb_log_model
-    config.report_to = ["wandb"]
-
+    config.report_to = "wandb"
+    return {}
 
 ExperimentTrackingConfig.register("comet_ml", init_comet_ml)
 ExperimentTrackingConfig.register("wandb", init_wandb)
@@ -131,7 +132,7 @@ def default_training_arguments(
     if eval_dataset:
         defaults.update(dict(eval_steps=5, evaluation_strategy="steps"))
     if experiment_tracking_config:
-        defaults.update({"report_to": [experiment_tracking_config.report_to]})
+        defaults.update({"report_to": experiment_tracking_config.report_to})
     return defaults
 
 
@@ -177,13 +178,11 @@ class FineTuneConfig:
             eval_dataset_config, experiment_tracking_config
         )
         training_arguments_dict.update(config.pop("training_arguments", {}))
-        training_arguments_dict.setdefault("type", "TrainingArguments")
         training_arguments_dict["output_dir"] = config["local_output"]
         training_arguments = load_config(TrainingArguments, training_arguments_dict)
 
         lora_config_dict = default_lora_dict
         lora_config_dict.update(config.pop("lora_config", {}))
-        lora_config_dict.setdefault("type", "LoraConfig")
         lora_config = load_config(LoraConfig, lora_config_dict)
 
         if train_dataset_config is None:
@@ -230,14 +229,42 @@ class CopyToSourcesCallback(TrainerCallback):
 def load_config(cls: type, kwargs: Optional[Dict[str, Any]]) -> Any:
     if kwargs is None:
         return None
-    if hasattr(cls, "from_config"):
-        return cls.from_config(**kwargs)
-    else:
-        return cls(**kwargs)
+    return cls(**kwargs)
 
 
 prompt_methods = {}
+prompt_format_methods = {}
 
+
+@dataclass
+class PromptFormatConfig:
+    method: str
+    kwargs: Dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def register(cls, name, method) -> None:
+        prompt_format_methods[name] = method
+
+    def load_role(self, **kwargs):
+        return Role(**kwargs)
+
+    def load(self):
+        method = prompt_format_methods[self.method]
+        kwargs = self.kwargs.copy()
+        for role_field in ['input', 'response', 'system', 'contexts', 'examples']:
+            if role_field in kwargs:
+                kwargs[role_field] = Role(**kwargs[role_field])
+        return method(**kwargs)
+
+
+PromptFormatConfig.register(PromptFormat.__name__, PromptFormat)
+PromptFormatConfig.register(UserAssistantFormat.__name__, UserAssistantFormat)
+PromptFormatConfig.register(RedpajamaFormat.__name__, RedpajamaFormat)
+PromptFormatConfig.register(VicunaFormat.__name__, VicunaFormat)
+PromptFormatConfig.register(Llama2Format.__name__, Llama2Format)
+PromptFormatConfig.register(TogetherLlama2Format.__name__, TogetherLlama2Format)
+PromptFormatConfig.register(ChatMLFormat.__name__, ChatMLFormat)
+PromptFormatConfig.register(DollyFormat.__name__, DollyFormat)
 
 @dataclass
 class PromptConfig:
@@ -250,7 +277,10 @@ class PromptConfig:
 
     def load(self, format):
         method = prompt_methods[self.method]
-        return method(format=format, **self.kwargs)
+        kwargs = self.kwargs.copy()
+        if "examples" in kwargs:
+            kwargs["examples"] = [Message(**x) for x in kwargs["examples"]]
+        return method(format=format, **kwargs)
 
 
 PromptConfig.register(Prompt.__name__, Prompt)
@@ -286,6 +316,7 @@ class DataPrepConfig:
     source_config: DatasetConfig
     base_model: str
     prompt_config: PromptConfig
+    prompt_format_config: Optional[PromptFormatConfig]
     dataset_writer_config: DatasetWriterConfig
     # pack examples into chunks of chunksize.
     # examples that are bigger than this will be excluded.
@@ -295,6 +326,7 @@ class DataPrepConfig:
 
     @classmethod
     def from_config(cls, **config: Dict[str, Any]) -> "DataPrepConfig":
+        prompt_format_config = load_config(PromptFormatConfig, config.pop("prompt_format_config", None))
         prompt_config = load_config(PromptConfig, config.pop("prompt_config", None))
         source_config = load_config(DatasetConfig, config.pop("source_config"))
         dataset_writer_config = load_config(
@@ -302,6 +334,7 @@ class DataPrepConfig:
         )
         return cls(
             prompt_config=prompt_config,
+            prompt_format_config=prompt_format_config,
             source_config=source_config,
             dataset_writer_config=dataset_writer_config,
             **config

@@ -4,7 +4,7 @@ from os.path import join
 import pathlib
 
 # import experiment tracking imports before ML toolkits
-import llm.experiment_tracking_imports
+import llm.experiment_tracking_imports  # noqa
 import click
 from transformers import AutoModelForCausalLM, AutoTokenizer, default_data_collator, Trainer
 from peft import prepare_model_for_kbit_training, get_peft_model
@@ -34,8 +34,7 @@ def run(config_path: str):
 
 def _run(config: Dict[str, Any]):
     finetune_config = FineTuneConfig.from_config(**config)
-    if finetune_config.experiment_tracking_config:
-        experiment_tracking_objs = finetune_config.experiment_tracking_config.begin()
+
     tokenizer = AutoTokenizer.from_pretrained(finetune_config.base_model)
     device_map = {"": LOCAL_RANK}
     model = AutoModelForCausalLM.from_pretrained(

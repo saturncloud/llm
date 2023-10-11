@@ -209,6 +209,40 @@ class Concatenator(object):
         return output
 
 
+from itertools import chain
+
+class Concatenator2(object):
+    def __init__(self, chunk_size=2048):
+        self.chunk_size=chunk_size
+        self.residual = {"input_ids": [], "attention_mask": [], "labels": []}
+
+    def __call__(self, batch):
+        concatenated_samples = {
+            k: v + list(chain(*batch[k])) for k, v in self.residual.items()
+        }
+
+        total_length = len(concatenated_samples[list(concatenated_samples.keys())[0]])
+
+        if total_length >= self.chunk_size:
+            chunk_num = total_length // self.chunk_size
+            result = {
+                k: [
+                    v[i : i + self.chunk_size]
+                    for i in range(0, chunk_num * self.chunk_size, self.chunk_size)
+                ]
+                for k, v in concatenated_samples.items()
+            }
+            self.residual = {
+                k: v[(chunk_num * self.chunk_size) :]
+                for k, v in concatenated_samples.items()
+            }
+        else:
+            result = concatenated_samples
+            self.residual = {k: [] for k in concatenated_samples.keys()}
+
+        return result
+
+
 def prepare_for_training(
     dataset: Dataset,
     prompt: Prompt,
@@ -225,13 +259,6 @@ def prepare_for_training(
         batched=True,
         remove_columns=dataset.features,
         num_proc=num_proc,
-        features=Features(
-            {
-                "input_ids": Sequence(Value(dtype="int32")),
-                "labels": Sequence(Value(dtype="int32")),
-                "attention_mask": Sequence(Value(dtype="int16")),
-            }
-        ),
     )
     concatenator = Concatenator(
         chunk_size=chunksize,
@@ -239,19 +266,15 @@ def prepare_for_training(
         unk_id=0,
         ignore_index=ignore_index,
     )
+    # concatenator = Concatenator2()
     dataset = dataset.map(
         concatenator,
         batched=True,
         with_indices=True,
         num_proc=1,
-        features=Features(
-            {
-                "input_ids": Sequence(Value(dtype="int32")),
-                "labels": Sequence(Value(dtype="int32")),
-                "attention_mask": Sequence(Value(dtype="int16")),
-            }
-        ),
     )
+    add_full_text = AddFullText(tokenizer)
+    dataset = dataset.map(add_full_text, batched=True)
     return dataset
 
 
@@ -263,12 +286,27 @@ def run(config_path: str):
     _run(config)
 
 
+class AddFullText:
+    def __init__(self, tokenizer):
+        self.tokenizer = tokenizer
+
+    def __call__(self, batch):
+        batch["full_text"] = []
+        for input_ids in batch['input_ids']:
+            batch["full_text"].append(self.tokenizer.decode(input_ids))
+        return batch
+
+
 def _run(config: Dict[str, Any]):
     dataprep_config = DataPrepConfig.from_config(**config)
     dataset = dataprep_config.source_config.load()
     tokenizer = AutoTokenizer.from_pretrained(dataprep_config.base_model)
-    model_config = ModelConfig.from_registry(config["base_model"])
-    prompt = dataprep_config.prompt_config.load(model_config.format)
+    if dataprep_config.prompt_format_config:
+        format = dataprep_config.prompt_format_config.load()
+    else:
+        model_config = ModelConfig.from_registry(config["base_model"])
+        format = model_config.format
+    prompt = dataprep_config.prompt_config.load(format)
     dataset = prepare_for_training(
         dataset,
         prompt,
@@ -277,6 +315,7 @@ def _run(config: Dict[str, Any]):
         dataprep_config.ignore_index,
         dataprep_config.num_proc,
     )
+    dataset = dataset.map()
     dataprep_config.dataset_writer_config.save(dataset)
 
 

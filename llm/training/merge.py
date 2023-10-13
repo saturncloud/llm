@@ -11,7 +11,9 @@ tokenizer = AutoTokenizer.from_pretrained(
 )
 
 model = AutoModelForCausalLM.from_pretrained(
-    BASE_MODEL, device_map="cpu", torch_dtype=torch.float16
+    BASE_MODEL,
+    device_map='cpu',
+    torch_dtype=torch.float16
 )
 
 model = PeftModel.from_pretrained(model, model_id)

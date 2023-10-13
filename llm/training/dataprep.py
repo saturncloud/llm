@@ -8,7 +8,7 @@ from typing import Dict, List, Any
 import copy
 
 import click
-from datasets import Dataset, Sequence, Value, Features
+from datasets import Dataset
 from ruamel.yaml import YAML
 from transformers import PreTrainedTokenizer, AutoTokenizer
 import torch
@@ -45,10 +45,10 @@ class TrainingFormatConverter:
                 contexts = batch["contexts"][idx]
             else:
                 contexts = None
-            message = Message(input=input_content, response=response_content, contexts=contexts)
-            input_prompt = prompt.render_instruction(
-                message.input, message.contexts, with_response_prefix=True
+            message = Message(
+                input=input_content, response=response_content, contexts=contexts
             )
+            input_prompt = prompt.render_instruction(message.input, message.contexts, with_response_prefix=True)
             full_text = prompt.render([message])
             prompt_length = len(tokenizer.encode(input_prompt))
             input_ids = tokenizer.encode(full_text)
@@ -208,38 +208,6 @@ class Concatenator(object):
         return output
 
 
-from itertools import chain
-
-
-class Concatenator2(object):
-    def __init__(self, chunk_size=2048):
-        self.chunk_size = chunk_size
-        self.residual = {"input_ids": [], "attention_mask": [], "labels": []}
-
-    def __call__(self, batch):
-        concatenated_samples = {k: v + list(chain(*batch[k])) for k, v in self.residual.items()}
-
-        total_length = len(concatenated_samples[list(concatenated_samples.keys())[0]])
-
-        if total_length >= self.chunk_size:
-            chunk_num = total_length // self.chunk_size
-            result = {
-                k: [
-                    v[i : i + self.chunk_size]
-                    for i in range(0, chunk_num * self.chunk_size, self.chunk_size)
-                ]
-                for k, v in concatenated_samples.items()
-            }
-            self.residual = {
-                k: v[(chunk_num * self.chunk_size) :] for k, v in concatenated_samples.items()
-            }
-        else:
-            result = concatenated_samples
-            self.residual = {k: [] for k in concatenated_samples.keys()}
-
-        return result
-
-
 def prepare_for_training(
     dataset: Dataset,
     prompt: Prompt,
@@ -263,7 +231,6 @@ def prepare_for_training(
         unk_id=0,
         ignore_index=ignore_index,
     )
-    # concatenator = Concatenator2()
     dataset = dataset.map(
         concatenator,
         batched=True,

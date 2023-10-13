@@ -5,15 +5,32 @@ import tempfile
 
 import fsspec.generic
 from datasets import load_dataset, load_from_disk, Dataset
-from transformers import TrainingArguments, TrainerCallback, TrainerState, TrainerControl
+from transformers import (
+    TrainingArguments,
+    TrainerCallback,
+    TrainerState,
+    TrainerControl,
+    BitsAndBytesConfig,
+)
 from peft import LoraConfig
 import torch
 from saturnfs import SaturnFS
 import fsspec
 
 from llm.model_configs import ModelConfig
-from llm.prompt import Prompt, Role, Message, UserAssistantFormat, RedpajamaFormat, VicunaFormat, Llama2Format, \
-    TogetherLlama2Format, ChatMLFormat, DollyFormat, PromptFormat
+from llm.prompt import (
+    Prompt,
+    Role,
+    Message,
+    UserAssistantFormat,
+    RedpajamaFormat,
+    VicunaFormat,
+    Llama2Format,
+    TogetherLlama2Format,
+    ChatMLFormat,
+    DollyFormat,
+    PromptFormat,
+)
 from llm.qa.prompts import ZeroShotQA, FewShotQA, StandaloneQuestion
 
 fsspec.register_implementation("sfs", SaturnFS)
@@ -63,6 +80,7 @@ def init_comet_ml(
     auto_output_logging=None,
 ) -> Dict[str, Any]:
     import comet_ml
+
     comet_ml.init(
         api_key=comet_api_key or os.getenv("COMET_API_KEY"),
         workspace=comet_workspace or os.getenv("COMET_WORKSPACE"),
@@ -85,6 +103,7 @@ def init_wandb(
     config.report_to = "wandb"
     return {}
 
+
 ExperimentTrackingConfig.register("comet_ml", init_comet_ml)
 ExperimentTrackingConfig.register("wandb", init_wandb)
 
@@ -95,8 +114,8 @@ dataset_method_registry = {}
 @dataclass
 class DatasetConfig:
     # name or path to dataset
-    method: str
-    kwargs: Dict[str, Any]
+    method: str = "load_dataset"
+    kwargs: Dict[str, Any] = field(default_factory=dict)
 
     def load(self) -> Dataset:
         method = dataset_method_registry[self.method]
@@ -155,6 +174,7 @@ class FineTuneConfig:
     load_in_8bit: bool = False
     use_gradient_checkpointing: bool = True
     resume_from_checkpoint: bool = True
+    quantization_config: Optional[BitsAndBytesConfig] = None
 
     @classmethod
     def from_config(cls, **config) -> "FineTuneConfig":
@@ -187,17 +207,35 @@ class FineTuneConfig:
 
         if train_dataset_config is None:
             raise ConfigError("train dataset is required")
+
+        if config.get("load_in_4bit") and config.get("quantization_config") is None:
+            config["quantization_config"] = dict(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype="float16",
+            )
+        quantization_config_dict = config.pop("quantization_config", {})
+        if "bnb_4bit_compute_dtype" in quantization_config_dict:
+            quantization_config_dict["bnb_4bit_compute_dtype"] = getattr(
+                torch, quantization_config_dict["bnb_4bit_compute_dtype"]
+            )
+        quantization_config = load_config(BitsAndBytesConfig, quantization_config_dict)
         return cls(
             training_arguments=training_arguments,
             lora_config=lora_config,
             train_dataset_config=train_dataset_config,
             eval_dataset_config=eval_dataset_config,
             experiment_tracking_config=experiment_tracking_config,
+            quantization_config=quantization_config,
             **config
         )
 
     def copy_callback(self):
         return CopyToSourcesCallback(self.local_output, self.additional_output_paths)
+
+    @property
+    def is_quantized(self):
+        return self.load_in_4bit or self.load_in_8bit or self.quantization_config is not None
 
 
 class CopyToSourcesCallback(TrainerCallback):
@@ -251,7 +289,7 @@ class PromptFormatConfig:
     def load(self):
         method = prompt_format_methods[self.method]
         kwargs = self.kwargs.copy()
-        for role_field in ['input', 'response', 'system', 'contexts', 'examples']:
+        for role_field in ["input", "response", "system", "contexts", "examples"]:
             if role_field in kwargs:
                 kwargs[role_field] = Role(**kwargs[role_field])
         return method(**kwargs)
@@ -265,6 +303,7 @@ PromptFormatConfig.register(Llama2Format.__name__, Llama2Format)
 PromptFormatConfig.register(TogetherLlama2Format.__name__, TogetherLlama2Format)
 PromptFormatConfig.register(ChatMLFormat.__name__, ChatMLFormat)
 PromptFormatConfig.register(DollyFormat.__name__, DollyFormat)
+
 
 @dataclass
 class PromptConfig:
@@ -306,9 +345,10 @@ class DatasetWriterConfig:
         method(dataset, **self.kwargs)
 
 
-DatasetWriterConfig.register(
-    "save_to_disk", lambda dataset, dataset_path: dataset.save_to_disk(dataset_path)
-)
+DatasetWriterConfig.register("save_to_disk", Dataset.save_to_disk)
+DatasetWriterConfig.register("to_json", Dataset.to_json)
+DatasetWriterConfig.register("to_parquet", Dataset.to_parquet)
+DatasetWriterConfig.register("to_csv", Dataset.to_csv)
 
 
 @dataclass
@@ -326,7 +366,9 @@ class DataPrepConfig:
 
     @classmethod
     def from_config(cls, **config: Dict[str, Any]) -> "DataPrepConfig":
-        prompt_format_config = load_config(PromptFormatConfig, config.pop("prompt_format_config", None))
+        prompt_format_config = load_config(
+            PromptFormatConfig, config.pop("prompt_format_config", None)
+        )
         prompt_config = load_config(PromptConfig, config.pop("prompt_config", None))
         source_config = load_config(DatasetConfig, config.pop("source_config"))
         dataset_writer_config = load_config(

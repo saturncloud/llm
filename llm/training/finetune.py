@@ -3,10 +3,18 @@ from typing import Dict, Any
 from os.path import join
 import pathlib
 
+import torch
+
 # import experiment tracking imports before ML toolkits
 import llm.experiment_tracking_imports  # noqa
 import click
-from transformers import AutoModelForCausalLM, AutoTokenizer, default_data_collator, Trainer
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    default_data_collator,
+    Trainer,
+    BitsAndBytesConfig,
+)
 from peft import prepare_model_for_kbit_training, get_peft_model
 from ruamel.yaml import YAML
 
@@ -43,10 +51,14 @@ def _run(config: Dict[str, Any]):
         load_in_4bit=finetune_config.load_in_4bit,
         torch_dtype=finetune_config.torch_dtype,
         device_map=device_map,
+        quantization_config=finetune_config.quantization_config,
     )
-
     model.train()
-    model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
+    if finetune_config.is_quantized:
+        model = prepare_model_for_kbit_training(
+            model,
+            use_gradient_checkpointing=finetune_config.training_arguments.gradient_checkpointing
+        )
     model = get_peft_model(model, finetune_config.lora_config)
 
     if LOCAL_RANK == 0:

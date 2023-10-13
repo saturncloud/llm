@@ -45,12 +45,11 @@ class TrainingFormatConverter:
                 contexts = batch["contexts"][idx]
             else:
                 contexts = None
-            input_message = Message(input=input_content, response="", contexts=contexts)
-            full_message = Message(
+            message = Message(
                 input=input_content, response=response_content, contexts=contexts
             )
-            input_prompt = prompt.render([input_message])
-            full_text = prompt.render([full_message])
+            input_prompt = prompt.render_instruction(message.input, message.contexts, with_response_prefix=True)
+            full_text = prompt.render([message])
             prompt_length = len(tokenizer.encode(input_prompt))
             input_ids = tokenizer.encode(full_text)
 
@@ -211,15 +210,14 @@ class Concatenator(object):
 
 from itertools import chain
 
+
 class Concatenator2(object):
     def __init__(self, chunk_size=2048):
-        self.chunk_size=chunk_size
+        self.chunk_size = chunk_size
         self.residual = {"input_ids": [], "attention_mask": [], "labels": []}
 
     def __call__(self, batch):
-        concatenated_samples = {
-            k: v + list(chain(*batch[k])) for k, v in self.residual.items()
-        }
+        concatenated_samples = {k: v + list(chain(*batch[k])) for k, v in self.residual.items()}
 
         total_length = len(concatenated_samples[list(concatenated_samples.keys())[0]])
 
@@ -233,8 +231,7 @@ class Concatenator2(object):
                 for k, v in concatenated_samples.items()
             }
             self.residual = {
-                k: v[(chunk_num * self.chunk_size) :]
-                for k, v in concatenated_samples.items()
+                k: v[(chunk_num * self.chunk_size) :] for k, v in concatenated_samples.items()
             }
         else:
             result = concatenated_samples
@@ -292,7 +289,7 @@ class AddFullText:
 
     def __call__(self, batch):
         batch["full_text"] = []
-        for input_ids in batch['input_ids']:
+        for input_ids in batch["input_ids"]:
             batch["full_text"].append(self.tokenizer.decode(input_ids))
         return batch
 

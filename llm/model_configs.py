@@ -62,6 +62,9 @@ class ModelConfig:
     tokenizer_kwargs: Dict[str, Any] = field(default_factory=dict)
     model_cls: Optional[Type[PreTrainedModel]] = None
     tokenizer_cls: Optional[Type[PreTrainedTokenizerBase]] = None
+    peft_base_id: Optional[str] = None
+    peft_kwargs: Dict[str, Any] = field(default_factory=dict)
+    default_lora_config: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         self.model_id = trim_model_path(self.model_id)
@@ -148,6 +151,16 @@ def trim_model_path(model_id: str) -> str:
     return model_id
 
 
+def llama_lora_config() -> Dict[str, Any]:
+    return dict(
+        r=8,
+        lora_alpha=32,
+        lora_dropout=0.05,
+        target_modules=["q_proj", "v_proj"],
+        task_type="CAUSAL_LM",
+        inference_mode=False,
+    )
+
 def fetch_peft_base(model_id: str) -> Optional[str]:
     if is_peft_available():
         from peft import PeftConfig
@@ -161,7 +174,12 @@ def fetch_peft_base(model_id: str) -> Optional[str]:
 
 
 @dataclass
-class VicunaConfig(ModelConfig):
+class LlamaConfig(ModelConfig):
+    default_lora_config: Dict = field(default_factory=llama_lora_config)
+
+
+@dataclass
+class VicunaConfig(LlamaConfig):
     model_id: str = "lmsys/vicuna-7b-v1.5"
     max_length: int = 4096
     format: PromptFormat = field(default_factory=VicunaFormat)
@@ -175,7 +193,7 @@ VicunaConfig.register(
 
 
 @dataclass
-class Llama2Config(ModelConfig):
+class Llama2Config(LlamaConfig):
     model_id: str = "meta-llama/Llama-2-7b-hf"
     max_length: int = 4096
 
@@ -188,7 +206,7 @@ Llama2Config.register(
 
 
 @dataclass
-class Llama2ChatConfig(ModelConfig):
+class Llama2ChatConfig(LlamaConfig):
     model_id: str = "meta-llama/Llama-2-7b-chat-hf"
     max_length: int = 4096
     format: PromptFormat = field(default_factory=Llama2Format)

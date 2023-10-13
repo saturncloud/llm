@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple, Type, Union
@@ -13,6 +12,7 @@ from transformers import (
     PreTrainedTokenizerBase,
     __version__ as TRANSFORMERS_VERSION,
 )
+from transformers.modeling_utils import is_peft_available
 
 from llm.prompt import (
     ChatMLFormat,
@@ -23,7 +23,9 @@ from llm.prompt import (
     TogetherLlama2Format,
     VicunaFormat,
 )
+from llm.utils.logs import get_logger
 
+logger = get_logger()
 _registry: Dict[str, Type[ModelConfig]] = {}
 
 
@@ -49,8 +51,8 @@ class ModelConfig:
     Stores model and tokenizer configuration for
     pretrained huggingface models.
 
-    PEFT models use their peft adapter name as model_id,
-    and set the base model ID in peft_base_id.
+    PEFT models may be loaded by their adapter model_id
+    assuming they have been properly created with adapter_config.json
     """
 
     model_id: str = ""
@@ -66,8 +68,6 @@ class ModelConfig:
 
     def __post_init__(self):
         self.model_id = trim_model_path(self.model_id)
-        if self.peft_base_id:
-            self.peft_base_id = trim_model_path(self.peft_base_id)
 
     def __init_subclass__(cls) -> None:
         if cls.model_id:
@@ -87,14 +87,21 @@ class ModelConfig:
         Load model config from the registry
         """
         model_id = trim_model_path(model_id)
+        config_cls = cls
         if model_id in _registry:
-            cls = _registry[model_id]
+            config_cls = _registry[model_id]
         else:
-            logging.warn(
-                f'ModelConfig "{model_id}" not found in registry. Using generic configuration.'
-            )
+            peft_base_id = fetch_peft_base(model_id)
+            if peft_base_id and peft_base_id in _registry:
+                config_cls = _registry[peft_base_id]
+            else:
+                logger.warn(
+                    f'ModelConfig "{model_id}" not found in registry. Using generic configuration.'
+                )
+        if not (cls == config_cls or issubclass(config_cls, cls)):
+            logger.warn(f'Registry entry for "{model_id}" {config_cls} is not a subclass of {cls}')
 
-        return cls(model_id=model_id, **kwargs)
+        return config_cls(model_id=model_id, **kwargs)
 
     def load(
         self,
@@ -116,13 +123,7 @@ class ModelConfig:
             **self.model_kwargs,
             **kwargs,
         }
-        model_id = self.model_id if not self.peft_base_id else self.peft_base_id
-        model = model_cls.from_pretrained(model_id, **model_kwargs)
-        if self.peft_base_id:
-            from peft import PeftModel
-
-            model = PeftModel.from_pretrained(model, self.model_id, **self.peft_kwargs)
-        return model
+        return model_cls.from_pretrained(self.model_id, **model_kwargs)
 
     def load_tokenizer(self, **kwargs) -> PreTrainedTokenizerBase:
         tokenizer_cls = self.tokenizer_cls or AutoTokenizer
@@ -130,8 +131,15 @@ class ModelConfig:
             **self.tokenizer_kwargs,
             **kwargs,
         }
-        model_id = self.model_id if not self.peft_base_id else self.peft_base_id
-        return tokenizer_cls.from_pretrained(model_id, **tokenizer_kwargs)
+        try:
+            return tokenizer_cls.from_pretrained(self.model_id, **tokenizer_kwargs)
+        except Exception as e:
+            # Check if model_id is a PEFT adapter
+            peft_base_id = fetch_peft_base(self.model_id)
+            if peft_base_id:
+                # Load base model's tokenizer
+                return tokenizer_cls.from_pretrained(peft_base_id, **tokenizer_kwargs)
+            raise e
 
 
 def trim_model_path(model_id: str) -> str:
@@ -152,6 +160,17 @@ def llama_lora_config() -> Dict[str, Any]:
         task_type="CAUSAL_LM",
         inference_mode=False,
     )
+
+def fetch_peft_base(model_id: str) -> Optional[str]:
+    if is_peft_available():
+        from peft import PeftConfig
+
+        try:
+            config = PeftConfig.from_pretrained(model_id)
+            return config.base_model_name_or_path
+        except Exception:
+            pass
+    return None
 
 
 @dataclass

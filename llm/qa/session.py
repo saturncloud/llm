@@ -91,9 +91,9 @@ class QASession:
         output_text = ""
         for output_text in self.engine.generate_stream(input_text, **gen_kwargs):
             output_text = output_text.strip()
+            message.response = output_text
             yield output_text
 
-        message.response = output_text
         if self.debug:
             print(f"\n** Context Answer **\n{output_text}")
 

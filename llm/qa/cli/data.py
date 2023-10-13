@@ -6,7 +6,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from transformers import AutoTokenizer
 
 from llm.qa.crawler import DocSpider
-from llm.qa.embedding import DEFAULT_MODEL, QAEmbeddings
+from llm.qa.embedding import DEFAULT_EMBEDDING_MODEL, QAEmbeddings
 from llm.qa.parser import DatasetParser, DataFields
 from llm.utils.cli import click_coroutine
 from llm.utils.data import load_data, save_data
@@ -103,7 +103,7 @@ def format(
 @click.option(
     "--context-model",
     help="Model name or path for splitting contexts by token length",
-    default=DEFAULT_MODEL,
+    default=DEFAULT_EMBEDDING_MODEL,
     envvar="QA_CONTEXT_MODEL",
 )
 def split(
@@ -147,7 +147,7 @@ def split(
 @click.option(
     "--context-model",
     help="Model name or path for context embedding",
-    default=DEFAULT_MODEL,
+    default=DEFAULT_EMBEDDING_MODEL,
     envvar="QA_CONTEXT_MODEL",
 )
 def embed(
@@ -185,7 +185,7 @@ def embed(
 @click.option(
     "--context-model",
     help="Model name or path for context embedding",
-    default=DEFAULT_MODEL,
+    default=DEFAULT_EMBEDDING_MODEL,
     envvar="QA_CONTEXT_MODEL",
 )
 def pipeline(

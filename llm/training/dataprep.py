@@ -45,10 +45,10 @@ class TrainingFormatConverter:
                 contexts = batch["contexts"][idx]
             else:
                 contexts = None
-            message = Message(
-                input=input_content, response=response_content, contexts=contexts
+            message = Message(input=input_content, response=response_content, contexts=contexts)
+            input_prompt = prompt.render_instruction(
+                message.input, message.contexts, with_response_prefix=True
             )
-            input_prompt = prompt.render_instruction(message.input, message.contexts, with_response_prefix=True)
             full_text = prompt.render([message])
             prompt_length = len(tokenizer.encode(input_prompt))
             input_ids = tokenizer.encode(full_text)

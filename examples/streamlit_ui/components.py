@@ -56,7 +56,9 @@ def init_session_state():
 
     subparsers = parser.add_subparsers(help="backend", dest="backend", required=False)
     transformers_parser = subparsers.add_parser("transformers", help="Local transformers engine")
-    transformers_parser.add_argument("-m", "--model-id", help="Chat model ID", default=DEFAULT_MODEL_ID)
+    transformers_parser.add_argument(
+        "-m", "--model-id", help="Chat model ID", default=DEFAULT_MODEL_ID
+    )
     transformers_parser.add_argument(
         "-n", "--num-workers", help="Number of chat models to run. Defaults to num GPUs."
     )
@@ -96,7 +98,7 @@ def init_session_state():
     if args.backend == "transformers":
         st.session_state["engine_kwargs"] = {
             "model_config": model_config,
-            "num_workers": args.num_workers
+            "num_workers": args.num_workers,
         }
     else:  # vllm-client
         st.session_state["engine_kwargs"] = {"url": args.url}

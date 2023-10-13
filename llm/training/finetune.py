@@ -64,7 +64,10 @@ def _run(config: Dict[str, Any]):
     if LOCAL_RANK == 0:
         model.print_trainable_parameters()
     train_dataset = finetune_config.train_dataset_config.load()
-    eval_dataset = finetune_config.eval_dataset_config.load()
+    if finetune_config.eval_dataset_config:
+        eval_dataset = finetune_config.eval_dataset_config.load()
+    else:
+        eval_dataset = None
     copy_callback: CopyToSourcesCallback = finetune_config.copy_callback()
     trainer = Trainer(
         model,

@@ -1,6 +1,7 @@
+import importlib
 import os
 from dataclasses import dataclass, asdict, field
-from typing import Union, Dict, Optional, List, Any
+from typing import Union, Dict, Optional, List, Any, Callable
 import tempfile
 
 import fsspec.generic
@@ -43,6 +44,14 @@ class ConfigError(Exception):
 experiment_tracking_methods = {}
 
 
+def load_method(registry: Dict[str, Callable], name: str) -> Callable:
+    if "::" in name:
+        module_str, ref = name.split('::')
+        module = importlib.import_module(module_str)
+        return getattr(module, ref)
+    return registry[name]
+
+
 @dataclass
 class ExperimentTrackingConfig:
     """
@@ -69,7 +78,8 @@ class ExperimentTrackingConfig:
         experiment_tracking_methods[name] = method
 
     def begin(self):
-        return experiment_tracking_methods[self.method](self, **self.kwargs)
+        method = load_method(experiment_tracking_methods, self.method)
+        return method(self, **self.kwargs)
 
 
 def init_comet_ml(
@@ -118,7 +128,7 @@ class DatasetConfig:
     kwargs: Dict[str, Any] = field(default_factory=dict)
 
     def load(self) -> Dataset:
-        method = dataset_method_registry[self.method]
+        method = load_method(dataset_method_registry, self.method)
         return method(**self.kwargs)
 
     @classmethod
@@ -189,7 +199,7 @@ class FineTuneConfig:
             ExperimentTrackingConfig, config.pop("experiment_tracking_config", None)
         )
         train_dataset_config = load_config(DatasetConfig, config.pop("train_dataset_config"))
-        eval_dataset_config = load_config(DatasetConfig, config.pop("eval_dataset_config"))
+        eval_dataset_config = load_config(DatasetConfig, config.pop("eval_dataset_config", None))
 
         if "torch_dtype" in config:
             config["torch_dtype"] = getattr(torch, config["torch_dtype"])
@@ -287,7 +297,7 @@ class PromptFormatConfig:
         return Role(**kwargs)
 
     def load(self):
-        method = prompt_format_methods[self.method]
+        method = load_method(prompt_format_methods, self.method)
         kwargs = self.kwargs.copy()
         for role_field in ["input", "response", "system", "contexts", "examples"]:
             if role_field in kwargs:
@@ -315,7 +325,7 @@ class PromptConfig:
         prompt_methods[name] = method
 
     def load(self, format):
-        method = prompt_methods[self.method]
+        method = load_method(prompt_methods, self.method)
         kwargs = self.kwargs.copy()
         if "examples" in kwargs:
             kwargs["examples"] = [Message(**x) for x in kwargs["examples"]]
@@ -341,7 +351,7 @@ class DatasetWriterConfig:
         dataset_writers[name] = method
 
     def save(self, dataset: Dataset):
-        method = dataset_writers[self.method]
+        method = load_method(dataset_writers, self.method)
         method(dataset, **self.kwargs)
 
 

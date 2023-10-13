@@ -307,7 +307,7 @@ PromptFormatConfig.register(DollyFormat.__name__, DollyFormat)
 
 @dataclass
 class PromptConfig:
-    method: str
+    method: str = "Prompt"
     kwargs: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -369,7 +369,7 @@ class DataPrepConfig:
         prompt_format_config = load_config(
             PromptFormatConfig, config.pop("prompt_format_config", None)
         )
-        prompt_config = load_config(PromptConfig, config.pop("prompt_config", None))
+        prompt_config = load_config(PromptConfig, config.pop("prompt_config", {}))
         source_config = load_config(DatasetConfig, config.pop("source_config"))
         dataset_writer_config = load_config(
             DatasetWriterConfig, config.pop("dataset_writer_config", None)

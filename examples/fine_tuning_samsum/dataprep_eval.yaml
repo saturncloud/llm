@@ -1,0 +1,12 @@
+source_config:
+  method: load_dataset
+  kwargs:
+    path: saturncloud/samsum
+    split: "eval"
+base_model: "meta-llama/Llama-2-7b-hf"
+prompt_format_config:
+  method: "UserAssistantFormat"
+dataset_writer_config:
+  method: save_to_disk
+  kwargs:
+    dataset_path: "/tmp/samsum-eval"

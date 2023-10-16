@@ -123,3 +123,107 @@ The result looks like this:
 
 ## Fine Tuning
 
+```
+$ python llm/training/finetune.py examples/fine_tuning_samsum/finetune.yaml
+```
+
+The `finetune.py` script will fine tune the base model using the data generated in the previous step.
+The specifics of the fine tuning job are defined in `finetune.yaml`
+
+```yaml
+base_model: "meta-llama/Llama-2-7b-hf"
+train_dataset_config:
+  method: load_from_disk
+  kwargs:
+    dataset_path: "/tmp/samsum-train"
+training_arguments:
+  per_device_train_batch_size: 3
+  per_device_eval_batch_size: 3
+  logging_steps: 2
+  max_steps: 30
+local_output: /tmp/samsum
+load_in_4bit: true
+```
+
+- base_model specifies which model and tokenizer will be used for fine tuning.
+- train_dataset_config specifies the training dataset
+- eval_dataset_config specifies the evaluation dataset (optional)
+- training_arguments are passed into the HuggingFace `TrainingArguments` object. 
+We also define our own default parameters that are suitable for most users. 
+This can be found in `llm.training.config::default_training_arguments`
+- local_output - this directory is set as the `output_dir` in `TrainingArguments`. 
+This means that all checkpoints will be saved to this location. In addition, once
+the training job is complete, the model will be saved to `${local_output}/final_output`
+- additional_output_paths - a list of additional output paths. The contents of 
+local_output will be copied (using `fsspec.generic.rsync`) to this location every time 
+a checkpoint is saved, and when the final training run is complete. You can use
+any protocol that fsspec understands, including things like `s3://` to save to S3.
+- load_in_4bit and load_in_8bit sets up 4bit and 8bit quantization. If you do not 
+which to use these flags, you can set `quantization_config` which should be arguments 
+to a `BitsAndBytesConfig` object. for 4bit quantization, we override some of the 
+default `BitsAndBytesConfig` options.
+
+## Evaluating the model
+
+### The Base Model
+This framework has other infrastructure that can facilitate batch inference, but for simplicity
+we do not use that here. 
+
+```bash
+$ python examples/fine_tuning_samsum/baseline.py
+```
+
+This script loads the base model (llama2) and passes the input into it. As expected, it performs 
+poorly. For the given prompt:
+
+```text
+User: summarize the following dialogue:
+A: Hi Tom, are you busy tomorrow’s afternoon?
+B: I’m pretty sure I am. What’s up?
+A: Can you go with me to the animal shelter?.
+B: What do you want to do?
+A: I want to get a puppy for my son.
+B: That will make him so happy.
+A: Yeah, we’ve discussed it many times. I think he’s ready now.
+B: That’s good. Raising a dog is a tough issue. Like having a baby ;-) 
+A: I'll get him one of those little dogs.
+B: One that won't grow up too big;-)
+A: And eat too much;-))
+B: Do you know which one he would like?
+A: Oh, yes, I took him there last Monday. He showed me one that he really liked.
+B: I bet you had to drag him away.
+A: He wanted to take it home right away ;-).
+B: I wonder what he'll name it.
+A: He said he’d name it after his dead hamster – Lemmy  - he's  a great Motorhead fan :-)))
+Assistant:
+```
+
+We get the following nonsensical output (yours may differ depending on randomness)
+
+```text
+ What is the meaning of the word “fungible” in the following sentence?
+“The fungible commodity was sold at a price lower than its average cost.”
+Assistant: What does the word “fungible” mean in the following sentence?
+“The fungible commodity was sold at a price lower than its average cost.”
+Assistant: What is the meaning of the word “fungible” in the following sentence?
+```
+
+
+### The fine tuned model
+
+```bash
+$ python examples/fine_tuning_samsum/eval_model.py 
+```
+
+This script will evaluate the prompt on the fine-tuned model. The only change is the addition of
+the following line:
+
+```python
+model = PeftModel.from_pretrained(model, "/tmp/samsum/final_output")
+```
+
+The output is much more sensible this time:
+
+```text
+The dialogue is about a boy who wants to get a dog. The boy's mother is going to the animal shelter with him.
+```

@@ -119,6 +119,7 @@ class MultiprocessEngine(InferenceEngine):
 
             self.queue.task_done()
         finally:
+            # Runs when generator is garbage collected
             if not self.closed:
                 # Add pipe back to queue to process new requests
                 self.queue.put(worker)

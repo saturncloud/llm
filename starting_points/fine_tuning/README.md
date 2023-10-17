@@ -77,21 +77,19 @@ With example packing, we can combine the first 2 in one row.
 
 ### Configuration in this repository
 
-{% note %}
-**Note:** The Saturn Cloud LLM Framework makes heavy use of configuration so that users can work
-with LLMs without having to write lots of code. Sometimes the configuration delegates to other 
+
+> **Note**
+> The Saturn Cloud LLM Framework makes heavy use of configuration so that users can work
+with LLMs without having to write lots of code. Sometimes the configuration delegates to other
 code/classes, for example
-- 
-- load_datest, load_from_disk for referencing HuggingFace datasets
-- UserAssistantFormat, VicunaFormat for PromptFormats
-- ZeroShotQA and FewShotQA classes for Prompts
-
-These configurations are specified with a `method` and a `kwargs` value. `method` is a string that
-has been registered against an existing python function in code. You can also call `methods` that
-we haven't registerd with `path.to.module::name` syntax. kwargs - is a dictionary of parameters that
-the method expects.
-
-{% endnote %}
+> - load_datest, load_from_disk for referencing HuggingFace datasets
+> - UserAssistantFormat, VicunaFormat for PromptFormats
+> - ZeroShotQA and FewShotQA classes for Prompts
+>
+> These configurations are specified with a `method` and a `kwargs` value. `method` is a string that
+has been registered against an existing python function in code. You can also call methods that
+we haven't registerd with the following syntax: `path.to.module::name`. The kwargs entry is a dictionary of
+> parameters that the method expects.
 
 ### Running dataset preparation.
 
@@ -107,19 +105,31 @@ configuration expects a method (`load_from_disk`, `load_dataset` or any other po
 with the syntax `path.to.module::name` ). It also expects a field called `kwargs` which is a 
 dictionary of parameters to that method.
 - base_model: The ID of the model you are going to fine tune. such as `meta-llama/Llama-2-7b-hf`
-- prompt_config: Configuration for the specific prompt object that will be used
-- prompt_format_config: Configuration for the specific prompt format that will be used
+- prompt_config: Configuration for the specific prompt object that will be used. 
 - dataset_writer_config: Configuration for writing the dataset 
 
-LLMs can be used for a variety of purposes - this repository currently focuses fine tuning on 
-replicating specific input/output patterns. Not all LLM use cases have clear delinations between
-inputs and outputs (for example if I want a model that finishes a story after I write 
-the first paragraph) but we find input/output patterns match most use cases that we hear about.
+The Prompt Format is the format that was used to train the model. 
+It is a good idea to use the Prompt Format for a given model, but sometimes not essential.
 
-In fine tuning an LLM to understand how to replicate specific inputs and outputs, having a clear
-structure in the prompt can be useful so that the LLM understands clear separation between inputs, 
-outputs, and when it should stop generating text. Language models that have been fine
-tuned for chat (Vicuna, llama2-chat) have prompt formats that have this structure already built 
-in place. Other language models like the base llama2 model do not. It is a good idea to make sure
-that either the prompt format or the prompt contains enough information to have clear separation 
-between inputs and outputs. When in doubt - 
+For example the Llama 2 chat model expects prompts to follow this style:
+
+"""
+<s>[INST] <<SYS>>
+{system_message}
+<</SYS>>
+
+{input} [/INST] {response} </s>
+"""
+
+Whereas Vicuna expects prompts to follow this style:
+
+"""
+<s> {system_message}
+USER: {input}
+ASSISTANT: {response}
+</s>
+"""
+
+The Prompts include specific system messages, examples (for few-shot learning)
+and some other formatting. Prompts can be mixed with different PromptFormats. 
+

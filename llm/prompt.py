@@ -386,3 +386,13 @@ class Conversation:
 
 
 prompts = {}
+
+
+@dataclass
+class DefaultPrompt(Prompt):
+    """
+    A basic prompt that is usable (but not very good) at most tasks
+    """
+    input_template: str = "Input: {text}"
+    context_template: str = "Context: {text}"
+    response_template: str = "Response: {text}"

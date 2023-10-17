@@ -30,7 +30,7 @@ from llm.prompt import (
     TogetherLlama2Format,
     ChatMLFormat,
     DollyFormat,
-    PromptFormat,
+    PromptFormat, DefaultPrompt,
 )
 from llm.qa.prompts import ZeroShotQA, FewShotQA, StandaloneQuestion
 
@@ -292,7 +292,7 @@ class PromptFormatConfig:
     @classmethod
     def register(cls, name, method) -> None:
         prompt_format_methods[name] = method
-
+p
     def load_role(self, **kwargs):
         return Role(**kwargs)
 
@@ -317,7 +317,7 @@ PromptFormatConfig.register(DollyFormat.__name__, DollyFormat)
 
 @dataclass
 class PromptConfig:
-    method: str = "Prompt"
+    method: str = "DefaultPrompt"
     kwargs: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -333,6 +333,7 @@ class PromptConfig:
 
 
 PromptConfig.register(Prompt.__name__, Prompt)
+PromptConfig.register(DefaultPrompt.__name__, DefaultPrompt)
 PromptConfig.register(ZeroShotQA.__name__, ZeroShotQA)
 PromptConfig.register(FewShotQA.__name__, FewShotQA)
 PromptConfig.register(StandaloneQuestion.__name__, StandaloneQuestion)

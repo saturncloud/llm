@@ -63,7 +63,7 @@ This repository uses a few concepts
 and templates for inputs, responses, and contexts. Prompts map to the problem you are trying 
 to solve, and can be mixed and matched with different PromptFormats that map to different models. 
 
-> ** Note **
+> [!NOTE]  
 > It is important that your Prompt or Prompt Format contain enough information to tell the language 
 > model when it should start servicing your request
  

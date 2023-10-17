@@ -79,4 +79,29 @@ With example packing, we can combine the first 2 in one row.
 ]
 ```
 
+### Running dataset preparation.
+
+```
+$ python llm/training/dataprep.py path-to-config.yaml
+```
+
+In addition to formatting your dataset, you will need to write a configuration file. Some relevant
+inputs:
+
+- source_config: This is the configuration for the hugging face dataset you've configured. Some 
+  examples:
+  - ```yaml
+    source_config:
+      method: load_dataset
+      kwargs:
+        path: saturncloud/samsum
+        split: "eval"
+    ```
+- base_model: The ID of the model you are going to fine tune. such as `meta-llama/Llama-2-7b-hf`
+- prompt_config: Configuration for the specific prompt object that will be used.
+- dataset_writer_config: Configuration for writing the dataset
+
+The default prompt_config is probably sufficient for what you were doing but we recommend
+reading the section on [Prompts](../../README.md#prompts) and
+[PromptFormats](../../README.md#prompt-format) and creating a Prompt explicilty.
 

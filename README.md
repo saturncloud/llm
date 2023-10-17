@@ -39,22 +39,22 @@ This repository uses a few concepts
   
       For example the Llama 2 chat model expects prompts to follow this style:
     
-      """
+      ```
       <s>[INST] <<SYS>>
       {system_message}
       <</SYS>>
     
       {input} [/INST] {response} </s>
-      """
+      ```
     
       Whereas Vicuna expects prompts to follow this style:
     
-      """
+      ```
       <s> {system_message}
       USER: {input}
       ASSISTANT: {response}
       </s>
-      """
+      ```
 
       Not all models have a Prompt Format. For example the Llama 2 base model was trained on 
       a corpus of text that didn't have system messages or user/assistant roles.

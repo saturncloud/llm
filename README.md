@@ -63,99 +63,99 @@ This repository uses a few concepts
 and templates for inputs, responses, and contexts. Prompts map to the problem you are trying 
 to solve, and can be mixed and matched with different PromptFormats that map to different models. 
 
-> [!NOTE]  
-> It is important that your Prompt or Prompt Format contain enough information to tell the language 
-> model when it should start servicing your request
- 
-For example, let's assume that you've constructed a Prompt object that renders the following 
-piece of data for fine tuning:
-
-```
-Please summarize the following conversation
-A: Hi Tom, are you busy tomorrow’s afternoon?
-B: I’m pretty sure I am. What’s up?
-A: Can you go with me to the animal shelter?.
-B: What do you want to do?
-A: I want to get a puppy for my son.
-
-Tom and his friend are going to the animal shelter to get a puppy for Tom's son.
-```
-
-If you fine tuned a model with data like this, and then attempted to use it to generate summaries,  
-feeding in this prompt:
-
-```
-Please summarize the following conversation
-A: Hi Tom, are you busy tomorrow’s afternoon?
-B: I’m pretty sure I am. What’s up?
-A: Can you go with me to the animal shelter?.
-B: What do you want to do?
-A: I want to get a puppy for my son.
-```
-
-Would likely result in the following output:
-
-```
-B: That will make him so happy.
-A: Yeah, we’ve discussed it many times. I think he’s ready now.
-B: That’s good. Raising a dog is a tough issue. Like having a baby ;-)
-A: I'll get him one of those little dogs.
-```
-
-This is because nothing in the input indicated that the conversation was over, and that the model
-should begin producing the summary. If you were using a model such as Vicuna, the inherent 
-PromptFormat would solve this problem:
-
-```
-User: Please summarize the following conversation
-A: Hi Tom, are you busy tomorrow’s afternoon?
-B: I’m pretty sure I am. What’s up?
-A: Can you go with me to the animal shelter?.
-B: What do you want to do?
-A: I want to get a puppy for my son.
-
-Assistant: Tom and his friend are going to the animal shelter to get a puppy for Tom's son.
-```
-
-The presence of the "Assistant:" string indicates to the language model that it's time to produce 
-the summary. 
-
-A better approach would be to bake this information into the Prompt object, so that the format
-of the model is irrelevant.
-
-```python
-Prompt(
-  system_message="Please summarize the following conversation", 
-  input_template="Conversation: {text}",
-  response_template="Summary: {text}"
-)
-```
-
-This would result in the following piece of training data when used with the base llama-2 model:
-
-```
-Please summarize the following conversation
-Conversation: A: Hi Tom, are you busy tomorrow’s afternoon?
-B: I’m pretty sure I am. What’s up?
-A: Can you go with me to the animal shelter?.
-B: What do you want to do?
-A: I want to get a puppy for my son.
-
-Summary: Tom and his friend are going to the animal shelter to get a puppy for Tom's son.
-```
-
-Or, if used with Vicuna:
-
-```
-Please summarize the following conversation
-User: Conversation: A: Hi Tom, are you busy tomorrow’s afternoon?
-B: I’m pretty sure I am. What’s up?
-A: Can you go with me to the animal shelter?.
-B: What do you want to do?
-A: I want to get a puppy for my son.
-
-Assistant: Summary: Tom and his friend are going to the animal shelter to get a puppy for Tom's son.
-```
+  > [!NOTE]  
+  > It is important that your Prompt or Prompt Format contain enough information to tell the language 
+  > model when it should start servicing your request
+   
+  For example, let's assume that you've constructed a Prompt object that renders the following 
+  piece of data for fine tuning:
+  
+  ```
+  Please summarize the following conversation
+  A: Hi Tom, are you busy tomorrow’s afternoon?
+  B: I’m pretty sure I am. What’s up?
+  A: Can you go with me to the animal shelter?.
+  B: What do you want to do?
+  A: I want to get a puppy for my son.
+  
+  Tom and his friend are going to the animal shelter to get a puppy for Tom's son.
+  ```
+  
+  If you fine tuned a model with data like this, and then attempted to use it to generate summaries,  
+  feeding in this prompt:
+  
+  ```
+  Please summarize the following conversation
+  A: Hi Tom, are you busy tomorrow’s afternoon?
+  B: I’m pretty sure I am. What’s up?
+  A: Can you go with me to the animal shelter?.
+  B: What do you want to do?
+  A: I want to get a puppy for my son.
+  ```
+  
+  Would likely result in the following output:
+  
+  ```
+  B: That will make him so happy.
+  A: Yeah, we’ve discussed it many times. I think he’s ready now.
+  B: That’s good. Raising a dog is a tough issue. Like having a baby ;-)
+  A: I'll get him one of those little dogs.
+  ```
+  
+  This is because nothing in the input indicated that the conversation was over, and that the model
+  should begin producing the summary. If you were using a model such as Vicuna, the inherent 
+  PromptFormat would solve this problem:
+  
+  ```
+  User: Please summarize the following conversation
+  A: Hi Tom, are you busy tomorrow’s afternoon?
+  B: I’m pretty sure I am. What’s up?
+  A: Can you go with me to the animal shelter?.
+  B: What do you want to do?
+  A: I want to get a puppy for my son.
+  
+  Assistant: Tom and his friend are going to the animal shelter to get a puppy for Tom's son.
+  ```
+  
+  The presence of the "Assistant:" string indicates to the language model that it's time to produce 
+  the summary. 
+  
+  A better approach would be to bake this information into the Prompt object, so that the format
+  of the model is irrelevant.
+  
+  ```python
+  Prompt(
+    system_message="Please summarize the following conversation", 
+    input_template="Conversation: {text}",
+    response_template="Summary: {text}"
+  )
+  ```
+  
+  This would result in the following piece of training data when used with the base llama-2 model:
+  
+  ```
+  Please summarize the following conversation
+  Conversation: A: Hi Tom, are you busy tomorrow’s afternoon?
+  B: I’m pretty sure I am. What’s up?
+  A: Can you go with me to the animal shelter?.
+  B: What do you want to do?
+  A: I want to get a puppy for my son.
+  
+  Summary: Tom and his friend are going to the animal shelter to get a puppy for Tom's son.
+  ```
+  
+  Or, if used with Vicuna:
+  
+  ```
+  Please summarize the following conversation
+  User: Conversation: A: Hi Tom, are you busy tomorrow’s afternoon?
+  B: I’m pretty sure I am. What’s up?
+  A: Can you go with me to the animal shelter?.
+  B: What do you want to do?
+  A: I want to get a puppy for my son.
+  
+  Assistant: Summary: Tom and his friend are going to the animal shelter to get a puppy for Tom's son.
+  ```
 
 - Configuration. We've written scripts for tasks (such as fine tuning, batch inference, model serving)
 So that you can ideally run these tasks without having to write any code at all. To do so we

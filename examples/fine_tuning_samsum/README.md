@@ -1,7 +1,5 @@
 # Fine Tuning Samsum
 
-Please read the README for this repository first.
-
 ## The Dataset
 The SAMSum dataset contains about 16k messenger-like conversations with summaries. 
 This examples loads data from huggingface `saturncloud/samsum` which is based off of the original
@@ -23,7 +21,18 @@ Amanda baked cookies and will bring Jerry some tomorrow.
 **We expect an input dataset to this workflow to contain input, response, and contexts.** 
 Contexts are optional. When specified, they should be a list of strings
 
+## General Workflow
+
+The General workflow for fine tuning LLMS with the Saturn Cloud LLM Framework is:
+1. Creating a Hugging Face Dataset in the correct format. This can be on disk - it does not need 
+  to be uploaded to the Hub
+2. You run the `dataprep.py` script which turns your input data into text based prompts, as well as
+   data actually used in training, input_ids, labels and the attention_mask
+3. You run the finetune.py script to fine tune the model.
+
 ## Datset preparation
+
+Please read through the [section on data preparation](../../llm/README.md#data-preparation-steps)
 
 ### Prompts and Prompt Formats
 

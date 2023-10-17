@@ -1,11 +1,14 @@
 # Fine Tuning / Training scripts
 
-This section contains the scripts used in Fine Tuning LLMs. The general workflow is:
+This section contains the scripts used in Fine Tuning LLMs. 
+The General workflow for fine tuning LLMS with the Saturn Cloud LLM Framework is:
 
-1. You are responsible for creating a Hugging Face Dataset in the correct format
+1. Creating a Hugging Face Dataset in the correct format. This can be on disk - it does not need
+   to be uploaded to the Hub
 2. You run the `dataprep.py` script which turns your input data into text based prompts, as well as
-data actually used in training, input_ids, labels and the attention_mask
+   data actually used in training, input_ids, labels and the attention_mask
 3. You run the finetune.py script to fine tune the model.
+
 
 ## Data Preparation Steps
 
@@ -79,7 +82,7 @@ With example packing, we can combine the first 2 in one row.
 ]
 ```
 
-### Running dataset preparation.
+## Running dataset preparation.
 
 ```
 $ python llm/training/dataprep.py path-to-config.yaml
@@ -97,6 +100,16 @@ inputs:
         path: saturncloud/samsum
         split: "eval"
     ```
+  - ```yaml
+      method: load_from_disk
+      kwargs:
+        dataset_path: "/tmp/train"
+    ```
+  - ```yaml
+      method: load_from_disk
+      kwargs:
+        dataset_path: "s3://my-data/train"
+    ```    
 - base_model: The ID of the model you are going to fine tune. such as `meta-llama/Llama-2-7b-hf`
 - prompt_config: Configuration for the specific prompt object that will be used.
 - dataset_writer_config: Configuration for writing the dataset
@@ -105,3 +118,30 @@ The default prompt_config is probably sufficient for what you were doing but we 
 reading the section on [Prompts](../../README.md#prompts) and
 [PromptFormats](../../README.md#prompt-format) and creating a Prompt explicilty.
 
+
+## Fine Tuning
+
+```
+$ python llm/training/finetune.py config.yaml
+```
+
+The `finetune.py` script will fine tune the base model using the data generated in the previous step.
+The specifics of the fine tuning job are defined in `config.yaml`
+
+- base_model specifies which model and tokenizer will be used for fine tuning.
+- train_dataset_config specifies the training dataset
+- eval_dataset_config specifies the evaluation dataset (optional)
+- training_arguments are passed into the HuggingFace `TrainingArguments` object.
+  We also define our own default parameters that are suitable for most users.
+  This can be found in `llm.training.config::default_training_arguments`
+- local_output - this directory is set as the `output_dir` in `TrainingArguments`.
+  This means that all checkpoints will be saved to this location. In addition, once
+  the training job is complete, the model will be saved to `${local_output}/final_output`
+- additional_output_paths - a list of additional output paths. The contents of
+  local_output will be copied (using `fsspec.generic.rsync`) to this location every time
+  a checkpoint is saved, and when the final training run is complete. You can use
+  any protocol that fsspec understands, including things like `s3://` to save to S3.
+- load_in_4bit and load_in_8bit sets up 4bit and 8bit quantization. If you do not
+  which to use these flags, you can set `quantization_config` which should be arguments
+  to a `BitsAndBytesConfig` object. for 4bit quantization, we override some of the
+  default `BitsAndBytesConfig` options.

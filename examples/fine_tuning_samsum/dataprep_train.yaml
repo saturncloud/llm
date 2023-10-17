@@ -4,8 +4,12 @@ source_config:
     path: saturncloud/samsum
     split: "train"
 base_model: "meta-llama/Llama-2-7b-hf"
-prompt_format_config:
-  method: "UserAssistantFormat"
+prompt_config:
+  method: Prompt
+  kwargs:
+    system_message: "Please summarize the following conversation"
+    input_template: "Conversation: {text}"
+    response_template: "Summary: {text}"
 dataset_writer_config:
   method: save_to_disk
   kwargs:

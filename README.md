@@ -20,6 +20,9 @@ that it is easy for you to fork this repository, or build your own framework on 
 You should fork this repository or build your own framework as soon as this repository stops making your life
 easier.
 
+You can use this framework without using Saturn Cloud. You build LLMs on Saturn Cloud without 
+using this framework. This framework is offered as an easy and useful way to get started.
+
 ## Structure of the repository
 
 - llm module - this module contains all the "library" code to facilitate LLM applications, as well as LLM functional tasks.

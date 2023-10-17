@@ -1,0 +1,11 @@
+source_config:
+  method: load_from_disk
+  kwargs:
+    dataset_path: ...
+base_model: ...
+prompt_format_config:
+  method: "UserAssistantFormat"
+dataset_writer_config:
+  method: save_to_disk
+  kwargs:
+    dataset_path: "/tmp/train"

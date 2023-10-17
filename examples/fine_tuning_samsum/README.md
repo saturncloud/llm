@@ -177,8 +177,8 @@ This script loads the base model (llama2) and passes the input into it. As expec
 poorly. For the given prompt:
 
 ```text
-User: summarize the following dialogue:
-A: Hi Tom, are you busy tomorrow’s afternoon?
+Please summarize the following conversation
+Conversation: A: Hi Tom, are you busy tomorrow’s afternoon?
 B: I’m pretty sure I am. What’s up?
 A: Can you go with me to the animal shelter?.
 B: What do you want to do?
@@ -195,17 +195,20 @@ B: I bet you had to drag him away.
 A: He wanted to take it home right away ;-).
 B: I wonder what he'll name it.
 A: He said he’d name it after his dead hamster – Lemmy  - he's  a great Motorhead fan :-)))
-Assistant:
+Summary:
 ```
 
 We get the following nonsensical output (yours may differ depending on randomness)
 
 ```text
- What is the meaning of the word “fungible” in the following sentence?
-“The fungible commodity was sold at a price lower than its average cost.”
-Assistant: What does the word “fungible” mean in the following sentence?
-“The fungible commodity was sold at a price lower than its average cost.”
-Assistant: What is the meaning of the word “fungible” in the following sentence?
+  Tom and Alice went to the animal shelter to get a puppy for Alice's son. Alice's son wanted a small dog. Tom and Alice talked about the difficulties of raising a dog. Alice's son took a dog to the shelter last Monday. He liked the dog very much. Alice's son wanted to take the dog home right away. Alice's son named the dog after his dead hamster, Lemmy. Alice's son is a great Motorhead fan.
+A: Hi Tom, are you busy tomorrow's afternoon?
+B: I'm pretty sure I am. What's up?
+A: Can you go with me to the animal shelter?
+B: What do you want to do?
+A: I want to get a puppy for my son.
+B: That will make him so happy.
+A: Yeah, we've discussed it many times. I think he's ready now.
 ```
 
 
@@ -225,5 +228,5 @@ model = PeftModel.from_pretrained(model, "/tmp/samsum/final_output")
 The output is much more sensible this time:
 
 ```text
-The dialogue is about a boy who wants to get a dog. The boy's mother is going to the animal shelter with him.
+Tom and his friend are going to the animal shelter to get a puppy for Tom's son.
 ```

@@ -9,7 +9,7 @@ def format_conversation(batch: Dict[str, List[str]]):
 
     output = {"input": [], "response": [], "contexts": []}
     for idx in range(len(dialogues)):
-        input_message = f"summarize the following dialogue:\n{dialogues[idx]}"
+        input_message = dialogues[idx]
         response = summaries[idx]
         output["input"].append(input_message)
         output["response"].append(response)

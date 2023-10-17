@@ -169,3 +169,14 @@ Assistant: Summary: Tom and his friend are going to the animal shelter to get a 
 We've written scripts for tasks (such as fine tuning, batch inference, model serving)
 So that you can ideally run these tasks without having to write any code at all. To do so we
 rely on a lightweight yaml configuration to direct the specifics of each task. 
+
+> [!NOTE]
+> Sometimes the configuration delegates to other code/classes, for example
+> - load_datest, load_from_disk for referencing HuggingFace datasets
+> - UserAssistantFormat, VicunaFormat for PromptFormats
+> - ZeroShotQA and FewShotQA classes for Prompts
+>
+> These configurations are specified with a `method` and a `kwargs` value. `method` is a string that
+has been registered against an existing python function in code. You can also call methods that
+we haven't registered with the following syntax: `path.to.module::name`. The kwargs entry is a dictionary of
+> parameters that the method expects.

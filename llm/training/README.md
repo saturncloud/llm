@@ -1,0 +1,82 @@
+# Fine Tuning / Training scripts
+
+This section contains the scripts used in Fine Tuning LLMs. The general workflow is:
+
+1. You are responsible for creating a Hugging Face Dataset in the correct format
+2. You run the `dataprep.py` script which turns your input data into text based prompts, as well as
+data actually used in training, input_ids, labels and the attention_mask
+3. You run the finetune.py script to fine tune the model.
+
+## Data Preparation Steps
+
+The following section covers the input data format expected by the Saturn Cloud LLM Framework.
+It also covers the data processing steps (implemented by this framework) necessary to turn this
+dataset into a format suitable for trainig (input_ids, attention_mask and labels)
+
+### Data Format
+
+The Saturn Cloud LLM framework expects data as a HuggingFace dataset, with the following fields
+- input: str - The input message
+- context: List[str] - A list of additional contexts the LLM will use in a response. Can be omitted
+  if there is no context.
+- response: The response from the LLM
+
+Please prepare your dataset as a HuggingFace dataset. You do not need to upload your data to
+HuggingFace. You can store in on local disk, or in S3 if you would like.
+
+### Prompts and Prompt Formats
+
+The Prompt object converts data into text that the model understands. It leverages a PromptFormat
+object which has formatting information specific to the model being trained.
+
+### input_ids, labels, and attention_mask
+
+We then pass the prompt through the tokenizer associated with the model you are fine tuning in order
+to generate 3 fields.
+
+- input_ids: List[int] - the result of passing text through the tokenizer
+- attention_mask: List[int] - ones and zeros
+- labels: List[int] - labels are what you are training the model to produce. We generate labels
+  by copying input_ids, and masking the values corresponding to the input to be -100 (which the model
+  knows to ignore in computing loss). Doing so ensures that we focus on training the model to
+  generate the specified output, and not worry about learning how to generate the input.
+
+### Example packing
+
+In training, data must all be padded to the same length in order to be packed into a batch. This
+is typically done by padding values. Example packing is an optimization where examples are concatenated
+to produce vectors of some maximum length.
+
+For example, assume I want to pack to a maximum length of 9.
+
+I have the following inputs
+
+```python
+[
+  [1, 100, 100, 2],
+  [1, 200, 200, 2]
+  [1, 300, 300, 300, 300, 2]
+]
+```
+
+Without example padding, in order to process these rows in the same batch, they would all need to
+be padded
+
+```python
+[
+  [1, 100, 100, 2, 0, 0],
+  [1, 200, 200, 2, 0, 0]
+  [1, 300, 300, 300, 300, 2]
+]
+```
+
+With example packing, we can combine the first 2 in one row.
+
+```python
+[
+  [1, 100, 100, 2, 1, 200, 200, 2, 0],
+  [1, 300, 300, 300, 300, 2, 0, 0, 0]
+]
+```
+
+

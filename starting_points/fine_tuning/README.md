@@ -111,3 +111,30 @@ The default prompt_config is probably sufficient for what you were doing but we 
 reading the section on [Prompts](../../README.md#prompts) and 
 [PromptFormats](../../README.md#prompt-format) and creating a Prompt explicilty.
 
+## Fine Tuning
+
+```
+$ python llm/training/finetune.py starting_points/fine_tuning_samsum/finetune.yaml
+```
+
+The `finetune.py` script will fine tune the base model using the data generated in the previous step.
+The specifics of the fine tuning job are defined in `finetune.yaml`
+
+- base_model specifies which model and tokenizer will be used for fine tuning.
+- train_dataset_config specifies the training dataset
+- eval_dataset_config specifies the evaluation dataset (optional) 
+- training_arguments are passed into the HuggingFace `TrainingArguments` object.
+  We also define our own default parameters that are suitable for most users.
+  This can be found in `llm.training.config::default_training_arguments`
+- local_output - this directory is set as the `output_dir` in `TrainingArguments`.
+  This means that all checkpoints will be saved to this location. In addition, once
+  the training job is complete, the model will be saved to `${local_output}/final_output`
+- additional_output_paths - a list of additional output paths. The contents of
+  local_output will be copied (using `fsspec.generic.rsync`) to this location every time
+  a checkpoint is saved, and when the final training run is complete. You can use
+  any protocol that fsspec understands, including things like `s3://` to save to S3.
+- load_in_4bit and load_in_8bit sets up 4bit and 8bit quantization. If you do not
+  which to use these flags, you can set `quantization_config` which should be arguments
+  to a `BitsAndBytesConfig` object. for 4bit quantization, we override some of the
+  default `BitsAndBytesConfig` options.
+ 

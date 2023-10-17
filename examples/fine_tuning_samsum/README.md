@@ -32,7 +32,75 @@ The General workflow for fine tuning LLMS with the Saturn Cloud LLM Framework is
 
 ## Datset preparation
 
-Please read through the [section on data preparation](../../llm/README.md#data-preparation-steps)
+The following command will run the data preparation steps.
+
+```bash
+$ python llm/training/dataprep.py examples/fine_tuning_samsum/dataprep_train.yaml
+```
+which will use the following configuration:
+
+```yaml
+source_config:
+  method: load_dataset
+  kwargs:
+    path: saturncloud/samsum
+    split: "train"
+base_model: "meta-llama/Llama-2-7b-hf"
+prompt_config:
+  method: Prompt
+  kwargs:
+    system_message: "Please summarize the following conversation"
+    input_template: "Conversation: {text}"
+    response_template: "Summary: {text}"
+dataset_writer_config:
+  method: save_to_disk
+  kwargs:
+    dataset_path: "/tmp/samsum-train"
+```
+
+- `source_config` tells us where to load the data
+- `base_model` this is the model we are fine tuning. In this phase, the model isn't relevant but
+we use this to load the Tokenizer.
+- `prompt_config` more on this later, but this Prompt turns our data into text we want the LLM
+to generate.
+- `dataset_writer_config` where we save the output.
+
+To understand what's going on, Please read through the 
+[section on data preparation](../../llm/training/README.md#data-preparation-steps)
+as well as the documentation on [Prompts](../../README.md#prompts) and
+[PromptFormats](../../README.md#prompt-format). They are short.
+
+This example does not use any context information, only inputs and responses. We are training 
+`meta-llama/Llama-2-7b-hf` 
+which does not have a PromptFormat. The Prompt we are using is as follows:
+
+```python
+DefaultPrompt(
+    system_message="Please summarize the following conversation",
+    input_template="Conversation: {text}",
+    response_template="Summary: {text}"
+)
+```
+
+This results in rendered full text output as follows:
+
+```text
+Please summarize the following conversation
+Conversation: A: Hi Tom, are you busy tomorrow’s afternoon?
+B: I’m pretty sure I am. What’s up?
+A: Can you go with me to the animal shelter?.
+B: What do you want to do?
+A: I want to get a puppy for my son.
+
+Summary: Tom and his friend are going to the animal shelter to get a puppy for Tom's son.
+```
+
+The data prep step will load data from HuggingFace (`saturncloud/samsum`), generate full 
+text prompts based on the above, convert that full text into tokenized outputs (`input_ids`, 
+`labels` and `attention_mask`) and pack all the examples to buffers of length 2048. The results
+are saved to `/tmp/samsum-train`
+
+
 
 ### Prompts and Prompt Formats
 

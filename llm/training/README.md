@@ -30,7 +30,10 @@ HuggingFace. You can store in on local disk, or in S3 if you would like.
 ### Prompts and Prompt Formats
 
 The Prompt object converts data into text that the model understands. It leverages a PromptFormat
-object which has formatting information specific to the model being trained.
+object which has formatting information specific to the model being trained. Please read 
+through the documentation on [Prompts](../../README.md#prompts) and
+[PromptFormats](../../README.md#prompt-format).
+
 
 ### input_ids, labels, and attention_mask
 

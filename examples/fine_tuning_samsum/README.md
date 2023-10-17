@@ -27,9 +27,8 @@ Contexts are optional. When specified, they should be a list of strings
 
 ### Prompts and Prompt Formats
 
-In order to convert the data into a data format suitable for fine tuning, we must first convert 
-our data into an actual prompt. To do so, we use a `Prompt` object (specified in your configuration)
-to render each row (input, response, contexts) of the hugging face dataset into a string.
+The Prompt object converts data into text that the model understands. It leverages a PromptFormat
+object which has formatting information specific to the model being trained.
 
 ### input_ids, labels, and attention_mask
 

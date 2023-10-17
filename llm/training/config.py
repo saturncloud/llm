@@ -292,7 +292,7 @@ class PromptFormatConfig:
     @classmethod
     def register(cls, name, method) -> None:
         prompt_format_methods[name] = method
-p
+
     def load_role(self, **kwargs):
         return Role(**kwargs)
 

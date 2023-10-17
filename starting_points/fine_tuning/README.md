@@ -2,7 +2,7 @@
 
 Please read the README for this repository first.
 
-## Datset preparation
+## Dataset preparation
 
 The following section covers the input data format expected by the Saturn Cloud LLM Framework.
 It also covers the data processing steps (implemented by this framework) necessary to turn this
@@ -21,9 +21,8 @@ HuggingFace. You can store in on local disk, or in S3 if you would like.
 
 ### Prompts and Prompt Formats
 
-In order to convert the data into a data format suitable for fine tuning, we must first convert
-our data into an actual prompt. To do so, we use a `Prompt` object (specified in your configuration)
-to render each row (input, response, contexts) of the hugging face dataset into a string.
+The Prompt object converts data into text that the model understands. It leverages a PromptFormat
+object which has formatting information specific to the model being trained.
 
 ### input_ids, labels, and attention_mask
 
@@ -108,28 +107,7 @@ dictionary of parameters to that method.
 - prompt_config: Configuration for the specific prompt object that will be used. 
 - dataset_writer_config: Configuration for writing the dataset 
 
-The Prompt Format is the format that was used to train the model. 
-It is a good idea to use the Prompt Format for a given model, but sometimes not essential.
-
-For example the Llama 2 chat model expects prompts to follow this style:
-
-"""
-<s>[INST] <<SYS>>
-{system_message}
-<</SYS>>
-
-{input} [/INST] {response} </s>
-"""
-
-Whereas Vicuna expects prompts to follow this style:
-
-"""
-<s> {system_message}
-USER: {input}
-ASSISTANT: {response}
-</s>
-"""
-
-The Prompts include specific system messages, examples (for few-shot learning)
-and some other formatting. Prompts can be mixed with different PromptFormats. 
+The default prompt_config is probably sufficient for what you were doing but we recommend 
+reading the section on [Prompts](../../README.md#prompts) and 
+[PromptFormats](../../README.md#prompt-format) and creating a Prompt explicilty.
 

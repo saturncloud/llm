@@ -1,5 +1,5 @@
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import gc
 
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
@@ -52,7 +52,6 @@ class TransformersEngine(InferenceEngine):
         **logit_kwargs,
     ) -> Iterable[str]:
         logits_config = LogitsProcessorConfig(**logit_kwargs)
-        logits_processor = logits_config.load()
         do_sampling = True if logits_config.do_sampling else False
 
         if not stop_token_ids:
@@ -92,7 +91,7 @@ class TransformersEngine(InferenceEngine):
 
             # Process output
             token = self.process_logits(
-                logits, output_ids, logits_processor=logits_processor, do_sampling=do_sampling
+                logits, output_ids, logits_config=logits_config, do_sampling=do_sampling
             )
             output_ids.append(token)
 
@@ -199,15 +198,15 @@ class TransformersEngine(InferenceEngine):
         self,
         logits: torch.Tensor,
         output_ids: List[int],
-        logits_processor: Optional[LogitsProcessorList] = None,
+        logits_config: Optional[LogitsProcessorConfig] = None,
         do_sampling: bool = True,
     ) -> int:
         """
         Process logits and determine the next token in the sequence.
         """
         output_tensor = torch.as_tensor([output_ids], device=logits.device)
-        if logits_processor:
-            last_token_logits = logits_processor(output_tensor, logits[:, -1, :])[0]
+        if logits_config:
+            last_token_logits = logits_config.process(output_tensor, logits[:, -1, :])[0]
         else:
             last_token_logits = logits[0, -1, :]
 
@@ -237,7 +236,8 @@ class LogitsProcessorConfig:
     top_k: int = -1
     repetition_penalty: float = 1.0
     do_sampling: Optional[bool] = None
-    logit_processors: Optional[LogitsProcessorList] = None
+
+    _logit_processors: LogitsProcessorList = field(init=False)
 
     def __post_init__(self):
         if self.do_sampling is None:
@@ -245,8 +245,9 @@ class LogitsProcessorConfig:
                 self.do_sampling = False
             else:
                 self.do_sampling = True
+        self._logit_processors = self._load()
 
-    def load(self) -> LogitsProcessorList:
+    def _load(self) -> LogitsProcessorList:
         processors = []
         if self.temperature != 1.0 and self.temperature != 0.0:
             processors.append(TemperatureLogitsWarper(self.temperature))
@@ -256,9 +257,10 @@ class LogitsProcessorConfig:
             processors.append(TopKLogitsWarper(self.top_k))
         if self.repetition_penalty != 1.0:
             processors.append(RepetitionPenaltyLogitsProcessor(self.repetition_penalty))
-        if self.logit_processors:
-            processors.extend(self.logit_processors)
         return LogitsProcessorList(processors)
+
+    def process(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> torch.FloatTensor:
+        return self._logit_processors(input_ids, scores, **kwargs)
 
 
 def check_stop_str(

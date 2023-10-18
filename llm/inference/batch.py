@@ -1,5 +1,5 @@
 from __future__ import annotations
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 import gc
 
 from typing import Any, Dict, Generator, Iterable, List, Optional, Set, Tuple, Union
@@ -34,12 +34,6 @@ class InferenceRequest:
     input_ids: List[int] = field(init=False)
     attention_mask: List[int] = field(init=False)
     logits_config: LogitsProcessorConfig = field(init=False)
-    logits_processor: LogitsProcessorList = field(init=False)
-
-    def __post_init__(self):
-        self.logits_config = LogitsProcessorConfig(**self.logit_kwargs)
-        self.logits_processor = self.logits_config.load()
-
 
 @dataclass
 class InferenceState:
@@ -51,10 +45,8 @@ class InferenceState:
     stopped_reason: str = ""
 
     tokens: List[int] = field(init=False)
-    input_len: int = field(init=False)
 
     def __post_init__(self):
-        self.input_len = len(self.request.input_ids)
         if self.request.echo_prompt:
             self.tokens = list(self.request.input_ids)
         else:
@@ -296,8 +288,7 @@ class BatchInference:
             token = self.process_logits(
                 logits[i],
                 state.tokens,
-                logits_processor=state.request.logits_processor,
-                do_sampling=state.request.logits_config.do_sampling,
+                logits_config=state.request.logits_config,
             )
             state.add_token(token)
             self.process_output(state)
@@ -306,15 +297,14 @@ class BatchInference:
         self,
         logits: Logits,
         output_ids: List[int],
-        logits_processor: Optional[LogitsProcessorList] = None,
-        do_sampling: bool = True,
+        logits_config: Optional[LogitsProcessorConfig] = None,
     ) -> int:
         """
         Process logits and determine the next token in the sequence.
         """
         output_tensor = torch.as_tensor([output_ids], device=logits.device)
-        if logits_processor:
-            last_token_logits = logits_processor(output_tensor, logits[-1, :].unsqueeze(0))[0]
+        if logits_config:
+            last_token_logits = logits_config.process(output_tensor, logits[-1, :].unsqueeze(0))[0]
         else:
             last_token_logits = logits[-1, :]
 
@@ -322,7 +312,7 @@ class BatchInference:
             # Switch to CPU by avoiding some bugs in mps backend.
             last_token_logits = last_token_logits.float().to("cpu")
 
-        if do_sampling:
+        if logits_config and logits_config.do_sampling:
             # Sample token from the distribution
             probs = torch.softmax(last_token_logits, dim=-1)
             token = int(torch.multinomial(probs, num_samples=1))

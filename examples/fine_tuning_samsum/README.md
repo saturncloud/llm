@@ -75,7 +75,7 @@ This example does not use any context information, only inputs and responses. We
 which does not have a PromptFormat. The Prompt we are using is as follows:
 
 ```python
-DefaultPrompt(
+Prompt(
     system_message="Please summarize the following conversation",
     input_template="Conversation: {text}",
     response_template="Summary: {text}"

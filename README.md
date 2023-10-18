@@ -120,7 +120,6 @@ B: I’m pretty sure I am. What’s up?
 A: Can you go with me to the animal shelter?.
 B: What do you want to do?
 A: I want to get a puppy for my son.
-
 Assistant: Tom and his friend are going to the animal shelter to get a puppy for Tom's son.
 ```
 
@@ -147,7 +146,6 @@ B: I’m pretty sure I am. What’s up?
 A: Can you go with me to the animal shelter?.
 B: What do you want to do?
 A: I want to get a puppy for my son.
-
 Summary: Tom and his friend are going to the animal shelter to get a puppy for Tom's son.
 ```
 
@@ -160,9 +158,17 @@ B: I’m pretty sure I am. What’s up?
 A: Can you go with me to the animal shelter?.
 B: What do you want to do?
 A: I want to get a puppy for my son.
-
 Assistant: Summary: Tom and his friend are going to the animal shelter to get a puppy for Tom's son.
 ```
+Similar to above, I think there's an extra \n here?
+
+And maybe add a little bit of extra detail about why this is useful like:
+
+The User and Assistant roles help Vicuna identify the components of the prompt, while the Conversation and 
+Summary prompt templating serves as a callback to the task in the system message. During inference 
+we can also use the PromptFormat's roles as early stopping conditions. If the model goes on to generate 
+a new User: .... message after the summary then the request is complete, and the final output can be 
+cleaned up before being returned to the user.
 
 ### Configuration
 

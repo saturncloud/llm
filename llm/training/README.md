@@ -20,7 +20,7 @@ dataset into a format suitable for trainig (input_ids, attention_mask and labels
 
 The Saturn Cloud LLM framework expects data as a HuggingFace dataset, with the following fields
 - input: str - The input message
-- context: List[str] - A list of additional contexts the LLM will use in a response. Can be omitted
+- contexts: List[str] - A list of additional contexts the LLM will use in a response. Can be omitted
   if there is no context.
 - response: The response from the LLM
 

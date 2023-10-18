@@ -1,7 +1,12 @@
 import streamlit as st
 from llm.prompt import Conversation, Message, Prompt
 
-from examples.streamlit_ui.components import chat_bubble, generation_settings, get_engine, setup_page
+from examples.streamlit_ui.components import (
+    chat_bubble,
+    generation_settings,
+    get_engine,
+    setup_page,
+)
 
 
 def get_conversation() -> Conversation:
@@ -67,6 +72,8 @@ if __name__ == "__main__":
         with chat_container:
             answer = chat_bubble("assistant")
             prompt_str = conversation.render(prompt)
-            for text in engine.generate_stream(prompt_str, stop=prompt.stop_strings, **generation_kwargs):
+            for text in engine.generate_stream(
+                prompt_str, stop=prompt.stop_strings, **generation_kwargs
+            ):
                 answer.text(text)
                 input_message.response = text

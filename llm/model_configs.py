@@ -161,6 +161,7 @@ def llama_lora_config() -> Dict[str, Any]:
         inference_mode=False,
     )
 
+
 def fetch_peft_base(model_id: str) -> Optional[str]:
     if is_peft_available():
         from peft import PeftConfig

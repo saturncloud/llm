@@ -3,7 +3,13 @@ import streamlit as st
 from llm.summarization.prompts import TextSummarization
 from llm.prompt import Conversation, Message
 
-from examples.streamlit_ui.components import chat_bubble, generation_settings, get_engine, setup_page
+from examples.streamlit_ui.components import (
+    chat_bubble,
+    generation_settings,
+    get_engine,
+    setup_page,
+)
+
 
 def get_conversation() -> Conversation:
     if "summary_conversation" in st.session_state:
@@ -55,6 +61,8 @@ if __name__ == "__main__":
             answer = chat_bubble("assistant")
             # No history in text summary, render only the latest input message
             prompt_str = prompt.render([input_message])
-            for text in engine.generate_stream(prompt_str, stop=prompt.stop_strings, **generation_kwargs):
+            for text in engine.generate_stream(
+                prompt_str, stop=prompt.stop_strings, **generation_kwargs
+            ):
                 answer.write(text)
                 input_message.response = text

@@ -57,7 +57,7 @@ def _run(config: Dict[str, Any]):
     if finetune_config.is_quantized:
         model = prepare_model_for_kbit_training(
             model,
-            use_gradient_checkpointing=finetune_config.training_arguments.gradient_checkpointing
+            use_gradient_checkpointing=finetune_config.training_arguments.gradient_checkpointing,
         )
     model = get_peft_model(model, finetune_config.lora_config)
 

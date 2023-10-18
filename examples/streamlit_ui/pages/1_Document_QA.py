@@ -11,7 +11,12 @@ from llm.qa.session import QASession
 from llm.qa.vector_store import DatasetVectorStore
 from llm.utils.data import load_data
 
-from examples.streamlit_ui.components import chat_bubble, generation_settings, get_engine, setup_page
+from examples.streamlit_ui.components import (
+    chat_bubble,
+    generation_settings,
+    get_engine,
+    setup_page,
+)
 
 
 @st.cache_resource

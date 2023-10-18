@@ -226,7 +226,7 @@ class BatchInference:
 
         new_tokens = [s.request.input_ids for s in new_states]
         new_masks = [s.request.attention_mask for s in new_states]
-        max_length = max(new_tokens, key=lambda x: len(x))
+        max_length = len(max(new_tokens))
 
         padded = self.tokenizer.pad(
             {"input_ids": new_tokens, "attention_mask": new_masks},
@@ -237,7 +237,7 @@ class BatchInference:
 
         # First step calculates attention of full input, and caches past key values
         logits, past_key_values, encoder_output = self.prefill(
-            padded.input_ids, padded.attenion_mask
+            padded.input_ids, padded.attention_mask
         )
 
         # Update caches

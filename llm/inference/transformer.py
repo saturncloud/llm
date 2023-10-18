@@ -19,154 +19,6 @@ EncoderHiddenState = Tuple[torch.FloatTensor]
 PastKeyValues = Tuple[Tuple[torch.FloatTensor, torch.FloatTensor]]
 
 
-@dataclass
-class InferenceRequest:
-    prompt: str
-    uid: str = field(default_factory=lambda: uuid4().hex)
-    max_new_tokens: int = 256
-    stream_interval: int = 2
-    echo_prompt: bool = False
-    stop: Union[str, List[str]] = ""
-    stop_token_ids: List[int] = field(default_factory=list)
-
-    # TODO: This better
-    temperature: float = 1.0
-    top_p: float = 1.0
-    top_k: int = -1
-    repetition_penalty: float = 1.0
-    do_sampling: Optional[bool] = None
-
-    input_ids: List[int] = field(init=False)
-    attention_mask: List[int] = field(init=False)
-    logits_config: LogitsProcessorConfig = field(init=False)
-
-    def __post_init__(self):
-        self.logits_config = LogitsProcessorConfig(
-            temperature=self.temperature, top_p=self.top_p, top_k = self.top_k, repetition_penalty=self.repetition_penalty, do_sampling=self.do_sampling
-        )
-
-@dataclass
-class InferenceState:
-    request: InferenceRequest
-    num_generated: int = 0
-    output: str = ""
-    output_updated: bool = False
-    stopped: bool = False
-    stopped_reason: str = ""
-
-    tokens: List[int] = field(init=False)
-
-    def __post_init__(self):
-        if self.request.echo_prompt:
-            self.tokens = list(self.request.input_ids)
-        else:
-            self.tokens = []
-
-    def add_token(self, token: int):
-        self.tokens.append(token)
-        self.num_generated += 1
-        if token in self.request.stop_token_ids or self.num_generated == self.request.max_new_tokens:
-            self.set_stopped(
-                "max tokens"
-                if self.num_generated == self.request.max_new_tokens
-                else "stop token"
-            )
-
-    def set_stopped(self, reason: str):
-        self.stopped = True
-        self.stopped_reason = reason
-
-    def set_output(self, output: str):
-        self.output = output
-        self.output_updated = True
-
-
-class PastKVCache:
-    def __init__(self, data: Optional[PastKeyValues] = None):
-        self.data: PastKeyValues = data or tuple()
-
-    @property
-    def batch_size(self) -> int:
-        if not self.data:
-            return 0
-        return len(self.data[0][0])
-
-    @property
-    def sequence_length(self) -> int:
-        if not self.data:
-            return 0
-        return self.data[0][0].shape[2]
-
-    def set(self, data: PastKeyValues):
-        self.data = data
-
-    def append(self, data: PastKeyValues):
-        if not self.data:
-            self.data = data
-            return
-        # TODO: Validate shape for EncoderDecoder models
-        self.data = tuple(
-            (torch.cat((k1, k2), dim=0), torch.cat((v1, v2), dim=0))
-            for (k1, v1), (k2, v2) in zip(self.data, data)
-        )
-
-    def discard(self, indices: Iterable[int]):
-        if not indices:
-            return
-        if not isinstance(indices, set):
-            indices = set(indices)
-        to_keep = [i for i in range(self.batch_size) if i not in indices]
-
-        if len(to_keep) > 0:
-            self.data = tuple(
-                (keys[to_keep], vals[to_keep])
-                for keys, vals in self.data
-            )
-        else:
-            self.data = tuple()
-
-
-class EncoderCache:
-    def __init__(self, data: Optional[EncoderHiddenState] = None):
-        self.data = data
-
-    @property
-    def batch_size(self) -> int:
-        if not self.data:
-            return 0
-        return len(self.data[0])
-
-    def set(self, data: Optional[EncoderHiddenState]):
-        self.data = data
-
-    def append(self, data: Optional[EncoderHiddenState]):
-        if not data:
-            return
-        if not self.data:
-            self.data = data
-            return
-
-        # TODO: Validate shape of encoder data has batch at dim 0
-        self.data = tuple(
-            torch.cat(s1, s2, dim=0)
-            for s1, s2 in zip(self.data, data)
-        )
-
-    def discard(self, indices: Iterable[int]):
-        if not indices or not self.data:
-            return
-        if not isinstance(indices, set):
-            indices = set(indices)
-        to_keep = [i for i in range(self.batch_size) if i not in indices]
-        if len(to_keep) > 0:
-            self.data = tuple(
-                (hidden_states[to_keep])
-                for hidden_states in self.data
-            )
-        else:
-            self.data = None
-
-
 class TransformersEngine(InferenceEngine):
     """
     Generate a token stream from a prompt with the given transformer model
@@ -211,7 +63,7 @@ class TransformersEngine(InferenceEngine):
         **kwargs,
     ) -> Iterable[str]:
         """
-        Simple single-prompt wrapper. Not safe to use concurrently.
+        Single-prompt inference streaming wrapper. Not safe to use concurrently.
         """
         request = InferenceRequest(
             prompt,
@@ -234,6 +86,9 @@ class TransformersEngine(InferenceEngine):
         stop_strings: Union[str, List[str]] = "",
         **kwargs,
     ) -> str:
+        """
+        Single-prompt inference wrapper. Not safe to use concurrently.
+        """
         # Longer default stream interval to avoid token-decoding overhead,
         # while still checking periodically for stop strings
         kwargs.setdefault("stream_interval", 20)
@@ -485,3 +340,151 @@ class TransformersEngine(InferenceEngine):
             self.kv_cache.discard(indices)
             self.encoder_cache.discard(indices)
             self.batch = [s for s in self.batch if not s.stopped]
+
+
+@dataclass
+class InferenceRequest:
+    prompt: str
+    uid: str = field(default_factory=lambda: uuid4().hex)
+    max_new_tokens: int = 256
+    stream_interval: int = 2
+    echo_prompt: bool = False
+    stop: Union[str, List[str]] = ""
+    stop_token_ids: List[int] = field(default_factory=list)
+
+    # TODO: This better
+    temperature: float = 1.0
+    top_p: float = 1.0
+    top_k: int = -1
+    repetition_penalty: float = 1.0
+    do_sampling: Optional[bool] = None
+
+    input_ids: List[int] = field(init=False)
+    attention_mask: List[int] = field(init=False)
+    logits_config: LogitsProcessorConfig = field(init=False)
+
+    def __post_init__(self):
+        self.logits_config = LogitsProcessorConfig(
+            temperature=self.temperature, top_p=self.top_p, top_k = self.top_k, repetition_penalty=self.repetition_penalty, do_sampling=self.do_sampling
+        )
+
+@dataclass
+class InferenceState:
+    request: InferenceRequest
+    num_generated: int = 0
+    output: str = ""
+    output_updated: bool = False
+    stopped: bool = False
+    stopped_reason: str = ""
+
+    tokens: List[int] = field(init=False)
+
+    def __post_init__(self):
+        if self.request.echo_prompt:
+            self.tokens = list(self.request.input_ids)
+        else:
+            self.tokens = []
+
+    def add_token(self, token: int):
+        self.tokens.append(token)
+        self.num_generated += 1
+        if token in self.request.stop_token_ids or self.num_generated == self.request.max_new_tokens:
+            self.set_stopped(
+                "max tokens"
+                if self.num_generated == self.request.max_new_tokens
+                else "stop token"
+            )
+
+    def set_stopped(self, reason: str):
+        self.stopped = True
+        self.stopped_reason = reason
+
+    def set_output(self, output: str):
+        self.output = output
+        self.output_updated = True
+
+
+class PastKVCache:
+    def __init__(self, data: Optional[PastKeyValues] = None):
+        self.data: PastKeyValues = data or tuple()
+
+    @property
+    def batch_size(self) -> int:
+        if not self.data:
+            return 0
+        return len(self.data[0][0])
+
+    @property
+    def sequence_length(self) -> int:
+        if not self.data:
+            return 0
+        return self.data[0][0].shape[2]
+
+    def set(self, data: PastKeyValues):
+        self.data = data
+
+    def append(self, data: PastKeyValues):
+        if not self.data:
+            self.data = data
+            return
+        # TODO: Validate shape for EncoderDecoder models
+        self.data = tuple(
+            (torch.cat((k1, k2), dim=0), torch.cat((v1, v2), dim=0))
+            for (k1, v1), (k2, v2) in zip(self.data, data)
+        )
+
+    def discard(self, indices: Iterable[int]):
+        if not indices:
+            return
+        if not isinstance(indices, set):
+            indices = set(indices)
+        to_keep = [i for i in range(self.batch_size) if i not in indices]
+
+        if len(to_keep) > 0:
+            self.data = tuple(
+                (keys[to_keep], vals[to_keep])
+                for keys, vals in self.data
+            )
+        else:
+            self.data = tuple()
+
+
+class EncoderCache:
+    def __init__(self, data: Optional[EncoderHiddenState] = None):
+        self.data = data
+
+    @property
+    def batch_size(self) -> int:
+        if not self.data:
+            return 0
+        return len(self.data[0])
+
+    def set(self, data: Optional[EncoderHiddenState]):
+        self.data = data
+
+    def append(self, data: Optional[EncoderHiddenState]):
+        if not data:
+            return
+        if not self.data:
+            self.data = data
+            return
+
+        # TODO: Validate shape of encoder data has batch at dim 0
+        self.data = tuple(
+            torch.cat(s1, s2, dim=0)
+            for s1, s2 in zip(self.data, data)
+        )
+
+    def discard(self, indices: Iterable[int]):
+        if not indices or not self.data:
+            return
+        if not isinstance(indices, set):
+            indices = set(indices)
+        to_keep = [i for i in range(self.batch_size) if i not in indices]
+        if len(to_keep) > 0:
+            self.data = tuple(
+                (hidden_states[to_keep])
+                for hidden_states in self.data
+            )
+        else:
+            self.data = None

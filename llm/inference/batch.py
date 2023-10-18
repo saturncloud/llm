@@ -2,7 +2,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import gc
 
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, Generator, Iterable, List, Optional, Set, Tuple, Union
+from uuid import uuid4
 
 import torch
 from transformers import (
@@ -16,11 +17,13 @@ from llm.inference.transformer import LogitsProcessorConfig, check_stop_str
 
 Logits = torch.FloatTensor
 EncoderHiddenState = Tuple[torch.FloatTensor]
+PastKeyValues = Tuple[Tuple[torch.FloatTensor, torch.FloatTensor]]
 
 
 @dataclass
 class InferenceRequest:
     prompt: str
+    uid: str = field(default_factory=lambda: uuid4().hex)
     max_new_tokens: int = 256
     stream_interval: int = 2
     echo_prompt: bool = False
@@ -71,23 +74,77 @@ class InferenceState:
         self.stopped_reason = reason
 
 
-class PastKeyValues:
-    def __init__(self, cache: Tuple[Tuple[torch.FloatTensor, torch.FloatTensor]]):
-        self.cache = cache
+class PastKVCache:
+    def __init__(self, data: Optional[PastKeyValues] = None):
+        self.data: PastKeyValues = data or tuple()
 
-    def keep(self, indices: List[int]):
-        self.cache = tuple(
-            (keys[indices], values[indices])
-            for keys, values in self.cache
+    @property
+    def batch_size(self) -> int:
+        if not self.data:
+            return 0
+        return len(self.data[0][0])
+
+    def set(self, data: PastKeyValues):
+        self.data = data
+
+    def append(self, data: PastKeyValues):
+        if not self.data:
+            self.data = data
+            return
+        self.data = tuple(
+            (torch.cat((k1, k2), dim=0), torch.cat((v1, v2), dim=0))
+            for (k1, v1), (k2, v2) in zip(self.data, data)
         )
 
-    def update(self, cache: Tuple[Tuple[torch.FloatTensor, torch.FloatTensor]]):
-        self.cache = cache
+    def discard(self, indices: Iterable[int]):
+        if not indices:
+            return
+        if not isinstance(indices, set):
+            indices = set(indices)
+        to_keep = [i for i in range(self.batch_size) if i not in indices]
 
-    def append(self, cache: Tuple[Tuple[torch.FloatTensor, torch.FloatTensor]]):
-        self.cache = tuple(
-            (torch.cat((k1, k2), dim=0), torch.cat((v1, v2), dim=0))
-            for (k1, v1), (k2, v2) in zip(self.cache, cache)
+        self.data = tuple(
+            (keys[to_keep], vals[to_keep])
+            for keys, vals in self.data
+        )
+
+
+class EncoderCache:
+    def __init__(self, data: Optional[EncoderHiddenState] = None):
+        self.data = data
+
+    @property
+    def batch_size(self) -> int:
+        if not self.data:
+            return 0
+        return len(self.data[0])
+
+    def set(self, data: Optional[EncoderHiddenState]):
+        self.data = data
+
+    def append(self, data: Optional[EncoderHiddenState]):
+        if not data:
+            return
+        if not self.data:
+            self.data = data
+            return
+
+        # TODO: Validate shape of encoder data has batch at dim 0
+        self.data = tuple(
+            torch.cat(s1, s2, dim=0)
+            for s1, s2 in zip(self.data, data)
+        )
+
+    def discard(self, indices: Iterable[int]):
+        if not indices or not self.data:
+            return
+        if not isinstance(indices, set):
+            indices = set(indices)
+        to_keep = [i for i in range(self.batch_size) if i not in indices]
+
+        self.data = tuple(
+            (hidden_states[to_keep])
+            for hidden_states in self.data
         )
 
 
@@ -97,10 +154,18 @@ class BatchInference:
         model: PreTrainedModel,
         tokenizer: PreTrainedTokenizerBase,
         max_length: int = 2048,
+        batch_size: int = 4,
     ):
         self.model = model
         self.tokenizer = tokenizer
         self.max_length = max_length
+        self.batch_size = batch_size
+
+        self.batch: List[InferenceState] = []
+        self.pending: List[InferenceState] = []
+        self.completed: List[InferenceState] = []
+        self.kv_cache = PastKVCache()
+        self.encoder_cache = EncoderCache()
 
         # Pad token is required
         if self.tokenizer.pad_token_id is None:
@@ -111,63 +176,43 @@ class BatchInference:
         model, tokenizer = model_config.load(**kwargs)
         return cls(model, tokenizer, max_length=model_config.max_length)
 
-    @torch.inference_mode()
-    def batch_requests(self, requests: List[InferenceRequest]) -> Iterable[List[InferenceState]]:
-        batch_state = self.process_inputs(requests)
-        incomplete = [i for (i, state) in enumerate(batch_state) if not state.stopped]
+    def add_requests(self, requests: List[InferenceRequest]):
+        states = self.process_inputs(requests)
+        self.pending.extend(states)
 
-        # First step calculates attention of full input
+    @torch.inference_mode()
+    def update_batch(self):
+        if len(self.batch) >= self.batch_size:
+            return
+
+        num = min(self.batch_size - len(self.batch), len(self.pending))
+        new_states = self.pending[:num]
+        self.pending = self.pending[num:]
+        self.batch.extend(new_states)
+
+        # First step calculates attention of full input, and caches past key values
         logits, past_key_values, encoder_output = self.prefill(
-            [requests[i].input_ids for i in incomplete], [requests[i].attention_mask for i in incomplete]
+            [s.request.input_ids for s in new_states], [s.request.attention_mask for s in new_states]
         )
 
-        latest_tokens: List[int] = []
-        while incomplete:
-            if latest_tokens:
-                # After the first step, only calculate attention of the new token.
-                # Previous tokens are represented by past_key_values
-                logits = self.decoder(
-                    latest_tokens, past_key_values, encoder_output=encoder_output
-                )
+        # Update caches
+        self.kv_cache.append(past_key_values)
+        self.encoder_cache.append(encoder_output)
 
-            # Process logits and evaluate stopping conditions
-            latest_tokens = []
-            do_yield = False
-            for i, batch_idx in enumerate(incomplete):
-                state = batch_state[batch_idx]
-                token = self.process_logits(
-                    logits[i],
-                    state.tokens,
-                    logits_processor=state.request.logits_processor,
-                    do_sampling=state.request.logits_config.do_sampling,
-                )
-                state.add_token(token)
-                if self.process_output(state):
-                    do_yield = True
+        # Convert initial logits to tokens
+        self.process_logits_batch(logits, new_states)
+        self.check_completed()
 
-                if not state.stopped:
-                    latest_tokens.append(token)
-
-            if do_yield:
-                yield batch_state
-
-            # Filter out completed indices
-            current = incomplete
-            incomplete: List[int] = []
-            cache_indices: List[int] = []
-            for i, batch_idx in enumerate(current):
-                if not batch_state[batch_idx].stopped:
-                    incomplete.append(batch_idx)
-                    cache_indices.append(i)
-
-            # Filter out KV cache from completed requests
-            if cache_indices:
-                past_key_values.keep(cache_indices)
-
-        # Clear out memory
-        del past_key_values, logits, encoder_output
-        gc.collect()
-        torch.cuda.empty_cache()
+    @torch.inference_mode()
+    def decode_step(self):
+        # After the first step, only calculate attention of the new token.
+        # Previous tokens are represented by the KV cache
+        logits, past_key_values = self.decoder(
+            [state.tokens[-1] for state in self.batch], self.kv_cache.data, encoder_output=self.encoder_cache.data
+        )
+        self.kv_cache.set(past_key_values)
+        self.process_logits_batch(logits)
+        self.check_completed()
 
     def prefill(
         self, input_ids: List[List[int]], attention_mask: Optional[List[List[int]]] = None
@@ -199,14 +244,14 @@ class BatchInference:
             # Decoder-only models
             out = self.model(input_tensor, attention_mask=attention_tensor, use_cache=True)
             logits = out.logits
-        return logits, PastKeyValues(out.past_key_values), encoder_output
+        return logits, out.past_key_values, encoder_output
 
     def decoder(
         self,
         last_tokens: List[int],
         past_key_values: PastKeyValues,
         encoder_output: Optional[EncoderHiddenState] = None,
-    ) -> Logits:
+    ) -> Tuple[Logits, PastKeyValues]:
         """
         Run a single decode step on the model. Only calculate attention on the most recent token generated,
         previous token's attention is preserved through past_key_values.
@@ -218,7 +263,7 @@ class BatchInference:
                 input_ids=input_tensor,
                 encoder_hidden_states=encoder_output,
                 use_cache=True,
-                past_key_values=past_key_values.cache,
+                past_key_values=past_key_values,
             )
             logits = self.model.lm_head(out)
         else:
@@ -226,11 +271,22 @@ class BatchInference:
             out = self.model(
                 input_ids=input_tensor,
                 use_cache=True,
-                past_key_values=past_key_values.cache,
+                past_key_values=past_key_values,
             )
             logits = out.logits
-        past_key_values.update(out.past_key_values)
-        return logits
+        return logits, out.past_key_values
+
+    def process_logits_batch(self, logits: Logits, batch: Optional[List[InferenceState]] = None):
+        # Process logits and evaluate stopping conditions
+        for i, state in enumerate(batch or self.batch):
+            token = self.process_logits(
+                logits[i],
+                state.tokens,
+                logits_processor=state.request.logits_processor,
+                do_sampling=state.request.logits_config.do_sampling,
+            )
+            state.add_token(token)
+            self.process_output(state)
 
     def process_logits(
         self,
@@ -312,3 +368,19 @@ class BatchInference:
                 state.set_stopped("input too long")
             batch_state.append(state)
         return batch_state
+
+    def check_completed(self) -> List[InferenceState]:
+        # Filter out completed indices
+        indices: Set[int] = set()
+        completed: List[InferenceState] = []
+        for i, state in enumerate(self.batch):
+            if state.stopped:
+                completed.append(state)
+                indices.add(i)
+
+        if completed:
+            # Filter out cache values for completed requests
+            self.kv_cache.discard(indices)
+            self.encoder_cache.discard(indices)
+            self.batch = [s for s in self.batch if not s.stopped]
+        self.completed.extend(completed)

@@ -3,7 +3,7 @@ import os
 from typing import Dict, Iterable, List, Optional, Union
 from requests import Session
 from llm.inference.base import InferenceEngine
-from llm.inference.transformer import check_stop_str
+from llm.inference.utils import check_stop_str
 
 
 class VLLMClient(InferenceEngine):

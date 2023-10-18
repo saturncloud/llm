@@ -1,19 +1,18 @@
 from __future__ import annotations
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 import gc
 
-from typing import Any, Dict, Generator, Iterable, List, Optional, Set, Tuple, Union
+from typing import Iterable, List, Optional, Set, Tuple, Union
 from uuid import uuid4
 
 import torch
 from transformers import (
     PreTrainedModel,
     PreTrainedTokenizerBase,
-    LogitsProcessorList,
 )
 
 from llm.model_configs import ModelConfig
-from llm.inference.transformer import LogitsProcessorConfig, check_stop_str
+from llm.inference.utils import LogitsProcessorConfig, check_stop_str
 
 Logits = torch.FloatTensor
 EncoderHiddenState = Tuple[torch.FloatTensor]

@@ -296,7 +296,7 @@ class BatchInference:
         encoder_output: Optional[EncoderHiddenState] = None,
     ) -> Tuple[Logits, PastKeyValues]:
         """
-        Run a single decode step on the model. Only calculate attention on the most recent token generated,
+        Run a single model decoder step. Only calculate attention on the most recent token generated,
         previous token's attention is preserved through past_key_values.
         """
         input_tensor = torch.as_tensor([[t] for t in last_tokens], device=self.model.device)
@@ -320,7 +320,9 @@ class BatchInference:
         return logits, out.past_key_values
 
     def process_logits_batch(self, logits: Logits, batch: Optional[List[InferenceState]] = None):
-        # Process logits and evaluate stopping conditions
+        """
+        Process logits and evaluate stopping conditions for all states in the batch
+        """
         for i, state in enumerate(batch or self.batch):
             token = self.process_logits(
                 logits[i],
@@ -358,7 +360,10 @@ class BatchInference:
             token = int(torch.argmax(last_token_logits))
         return token
 
-    def process_output(self, state: InferenceState) -> bool:
+    def process_output(self, state: InferenceState):
+        """
+        Decode tokens and check for stopping conditions
+        """
         stream_interval = state.request.stream_interval
         if (stream_interval > 0 and state.num_generated % stream_interval == 0) or state.stopped:
             # Decode tokens, and check if an update needs to be yielded
@@ -383,10 +388,11 @@ class BatchInference:
             # Prevent updating output with partial stop strings
             if not partial_stop or state.stopped:
                 state.set_output(output)
-                return True
-        return False
 
     def process_inputs(self, requests: List[InferenceRequest]) -> List[InferenceState]:
+        """
+        Prepare requests for inference
+        """
         for req in requests:
             if not req.stop_token_ids:
                 if self.tokenizer.eos_token_id is not None:

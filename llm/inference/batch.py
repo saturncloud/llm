@@ -46,6 +46,7 @@ class InferenceState:
     request: InferenceRequest
     num_generated: int = 0
     output: str = ""
+    output_updated: bool = False
     stopped: bool = False
     stopped_reason: str = ""
 
@@ -72,6 +73,10 @@ class InferenceState:
     def set_stopped(self, reason: str):
         self.stopped = True
         self.stopped_reason = reason
+
+    def set_output(self, output: str):
+        self.output = output
+        self.output_updated = True
 
 
 class PastKVCache:
@@ -163,7 +168,6 @@ class BatchInference:
 
         self.batch: List[InferenceState] = []
         self.pending: List[InferenceState] = []
-        self.completed: List[InferenceState] = []
         self.kv_cache = PastKVCache()
         self.encoder_cache = EncoderCache()
 
@@ -179,6 +183,18 @@ class BatchInference:
     def add_requests(self, requests: List[InferenceRequest]):
         states = self.process_inputs(requests)
         self.pending.extend(states)
+
+    def run_batch(self, requests: List[InferenceRequest]) -> Iterable[InferenceState]:
+        self.add_requests(requests)
+        while self.pending:
+            self.update_batch()
+            yield from self._iterate_updates()
+            self._check_completed()
+
+            while len(self.batch) > 0:
+                self.decode_step()
+                yield from self._iterate_updates()
+                self._check_completed()
 
     @torch.inference_mode()
     def update_batch(self):
@@ -201,7 +217,6 @@ class BatchInference:
 
         # Convert initial logits to tokens
         self.process_logits_batch(logits, new_states)
-        self.check_completed()
 
     @torch.inference_mode()
     def decode_step(self):
@@ -212,7 +227,6 @@ class BatchInference:
         )
         self.kv_cache.set(past_key_values)
         self.process_logits_batch(logits)
-        self.check_completed()
 
     def prefill(
         self, input_ids: List[List[int]], attention_mask: Optional[List[List[int]]] = None
@@ -341,7 +355,7 @@ class BatchInference:
 
             # Prevent updating output with partial stop strings
             if not partial_stop or state.stopped:
-                state.output = output
+                state.set_output(output)
                 return True
         return False
 
@@ -369,18 +383,21 @@ class BatchInference:
             batch_state.append(state)
         return batch_state
 
-    def check_completed(self) -> List[InferenceState]:
+    def _iterate_updates(self) -> Iterable[InferenceState]:
+        for state in self.batch:
+            if state.stopped or state.output_updated:
+                yield state
+                state.output_updated = False
+
+    def _check_completed(self):
         # Filter out completed indices
         indices: Set[int] = set()
-        completed: List[InferenceState] = []
         for i, state in enumerate(self.batch):
             if state.stopped:
-                completed.append(state)
                 indices.add(i)
 
-        if completed:
+        if indices:
             # Filter out cache values for completed requests
             self.kv_cache.discard(indices)
             self.encoder_cache.discard(indices)
             self.batch = [s for s in self.batch if not s.stopped]
-        self.completed.extend(completed)

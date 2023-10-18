@@ -100,10 +100,13 @@ class PastKVCache:
             indices = set(indices)
         to_keep = [i for i in range(self.batch_size) if i not in indices]
 
-        self.data = tuple(
-            (keys[to_keep], vals[to_keep])
-            for keys, vals in self.data
-        )
+        if len(to_keep) > 0:
+            self.data = tuple(
+                (keys[to_keep], vals[to_keep])
+                for keys, vals in self.data
+            )
+        else:
+            self.data = tuple()
 
 
 class EncoderCache:
@@ -138,11 +141,13 @@ class EncoderCache:
         if not isinstance(indices, set):
             indices = set(indices)
         to_keep = [i for i in range(self.batch_size) if i not in indices]
-
-        self.data = tuple(
-            (hidden_states[to_keep])
-            for hidden_states in self.data
-        )
+        if len(to_keep) > 0:
+            self.data = tuple(
+                (hidden_states[to_keep])
+                for hidden_states in self.data
+            )
+        else:
+            self.data = None
 
 
 class BatchInference:

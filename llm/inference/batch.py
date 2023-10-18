@@ -92,6 +92,12 @@ class PastKVCache:
             return 0
         return len(self.data[0][0])
 
+    @property
+    def sequence_length(self) -> int:
+        if not self.data:
+            return 0
+        return self.data[0][0].shape[2]
+
     def set(self, data: PastKeyValues):
         self.data = data
 
@@ -99,6 +105,7 @@ class PastKVCache:
         if not self.data:
             self.data = data
             return
+        # TODO: Validate shape for EncoderDecoder models
         self.data = tuple(
             (torch.cat((k1, k2), dim=0), torch.cat((v1, v2), dim=0))
             for (k1, v1), (k2, v2) in zip(self.data, data)
@@ -206,17 +213,28 @@ class BatchInference:
 
     @torch.inference_mode()
     def update_batch(self):
-        if len(self.batch) >= self.batch_size:
-            return
+        if len(self.batch) != 0:
+            raise Exception("Updating an in-progress batch is not currently supported.")
 
         num = min(self.batch_size - len(self.batch), len(self.pending))
         new_states = self.pending[:num]
         self.pending = self.pending[num:]
         self.batch.extend(new_states)
 
+        new_tokens = [s.request.input_ids for s in new_states]
+        new_masks = [s.request.attention_mask for s in new_states]
+        max_length = max(new_tokens, key=lambda x: len(x))
+
+        padded = self.tokenizer.pad(
+            {"input_ids": new_tokens, "attention_mask": new_masks},
+            padding="max_length",
+            max_length=max_length,
+            return_attention_mask=True,
+        )
+
         # First step calculates attention of full input, and caches past key values
         logits, past_key_values, encoder_output = self.prefill(
-            [s.request.input_ids for s in new_states], [s.request.attention_mask for s in new_states]
+            padded.input_ids, padded.attenion_mask
         )
 
         # Update caches
@@ -374,7 +392,7 @@ class BatchInference:
         # Tokenize and collect inputs
         inputs = self.tokenizer(
             [req.prompt for req in requests],
-            padding="longest",
+            padding=False,
             add_special_tokens=False,
             return_attention_mask=True,
         )

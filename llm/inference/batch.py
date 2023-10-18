@@ -29,11 +29,22 @@ class InferenceRequest:
     echo_prompt: bool = False
     stop: Union[str, List[str]] = ""
     stop_token_ids: List[int] = field(default_factory=list)
-    logit_kwargs: Dict[str, Any] = field(default_factory=dict)
+
+    # TODO: This better
+    temperature: float = 1.0
+    top_p: float = 1.0
+    top_k: int = -1
+    repetition_penalty: float = 1.0
+    do_sampling: Optional[bool] = None
 
     input_ids: List[int] = field(init=False)
     attention_mask: List[int] = field(init=False)
     logits_config: LogitsProcessorConfig = field(init=False)
+
+    def __post_init__(self):
+        self.logits_config = LogitsProcessorConfig(
+            temperature=self.temperature, top_p=self.top_p, top_k = self.top_k, repetition_penalty=self.repetition_penalty, do_sampling=self.do_sampling
+        )
 
 @dataclass
 class InferenceState:

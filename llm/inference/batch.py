@@ -199,16 +199,20 @@ class BatchInference:
         self.pending.extend(states)
 
     def run_batch(self, requests: List[InferenceRequest]) -> Iterable[InferenceState]:
-        self.add_requests(requests)
-        while self.pending:
-            self.update_batch()
-            yield from self._iterate_updates()
-            self._check_completed()
-
-            while len(self.batch) > 0:
-                self.decode_step()
+        try:
+            self.add_requests(requests)
+            while self.pending:
+                self.update_batch()
                 yield from self._iterate_updates()
                 self._check_completed()
+
+                while len(self.batch) > 0:
+                    self.decode_step()
+                    yield from self._iterate_updates()
+                    self._check_completed()
+        finally:
+            gc.collect()
+            torch.cuda.empty_cache()
 
     @torch.inference_mode()
     def update_batch(self):

@@ -50,7 +50,7 @@ class QASession:
         if engine is None:
             engine = TransformersEngine.from_model_config(
                 model_config,
-                model_kwargs={
+                load_kwargs={
                     "device_map": "auto",
                     "torch_dtype": torch.float16,
                     "quantization_config": bnb_quantization(),

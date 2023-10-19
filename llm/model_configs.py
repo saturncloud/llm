@@ -106,14 +106,13 @@ class ModelConfig:
     def load(
         self,
         device_map: Optional[Union[str, Dict]] = None,
-        model_kwargs: Optional[Dict[str, Any]] = None,
         tokenizer_kwargs: Optional[Dict[str, Any]] = None,
+        **kwargs,
     ) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
-        model_kwargs = model_kwargs or {}
         tokenizer_kwargs = tokenizer_kwargs or {}
         if device_map is not None:
-            model_kwargs["device_map"] = device_map
-        model = self.load_model(**model_kwargs)
+            kwargs["device_map"] = device_map
+        model = self.load_model(**kwargs)
         tokenizer = self.load_tokenizer(**tokenizer_kwargs)
         return model, tokenizer
 

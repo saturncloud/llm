@@ -114,7 +114,7 @@ def get_transformers_engine(
     return MultiprocessEngine.from_model_config(
         model_config,
         num_workers=num_workers,
-        model_kwargs={
+        load_kwargs={
             "torch_dtype": torch.float16,
             "quantization_config": bnb_quantization(),
         },

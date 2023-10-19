@@ -40,6 +40,7 @@ class TransformersEngine(InferenceEngine):
         self.pending: List[InferenceState] = []
         self.kv_cache = PastKVCache()
         self.encoder_cache = EncoderCache()
+        self.has_updates: bool = False
 
         # Pad token is required
         if self.tokenizer.pad_token_id is None:
@@ -51,7 +52,41 @@ class TransformersEngine(InferenceEngine):
         kwargs.setdefault("max_length", model_config.max_length)
         return cls(model, tokenizer, **kwargs)
 
+    def add_requests(self, requests: List[InferenceRequest]):
+        states = self.process_inputs(requests)
+        self.pending.extend(states)
+
     @torch.inference_mode()
+    def generate_batch_stream(self, requests: List[InferenceRequest]) -> Iterable[InferenceResponse]:
+        try:
+            self.add_requests(requests)
+            while self.pending:
+                self.update_batch()
+                yield from self._iterate_updates()
+                self._check_completed()
+
+                while len(self.batch) > 0:
+                    self.decode_step()
+                    yield from self._iterate_updates()
+                    self._check_completed()
+        finally:
+            self._clear()
+
+    @torch.inference_mode()
+    def generate_batch(self, requests: List[InferenceRequest]) -> List[InferenceResponse]:
+        self.add_requests(requests)
+        all_states: List[InferenceState] = []
+        while self.pending:
+            self.update_batch()
+            all_states.extend(self.batch)
+            self._check_completed()
+
+            while len(self.batch) > 0:
+                self.decode_step()
+                self._check_completed()
+        self._clear()
+        return [s.resp for s in all_states]
+
     def generate_stream(
         self,
         prompt: str,
@@ -74,7 +109,7 @@ class TransformersEngine(InferenceEngine):
             stream_interval=stream_interval,
             **kwargs
         )
-        for response in self.run_batch([request]):
+        for response in self.generate_batch_stream([request]):
             yield response.output
 
     def generate(
@@ -89,37 +124,19 @@ class TransformersEngine(InferenceEngine):
         """
         Single-prompt inference wrapper. Not safe to use concurrently.
         """
-        # Longer default stream interval to avoid token-decoding overhead,
-        # while still checking periodically for stop strings
-        kwargs.setdefault("stream_interval", 20)
-        return super().generate(
+        request = InferenceRequest(
             prompt,
             max_new_tokens=max_new_tokens,
             echo_prompt=echo_prompt,
             stop_token_ids=stop_token_ids,
             stop_strings=stop_strings,
-            **kwargs,
+            **kwargs
         )
+        return self.generate_batch([request])[0]
 
     def add_requests(self, requests: List[InferenceRequest]):
         states = self.process_inputs(requests)
         self.pending.extend(states)
-
-    def run_batch(self, requests: List[InferenceRequest]) -> Iterable[InferenceResponse]:
-        try:
-            self.add_requests(requests)
-            while self.pending:
-                self.update_batch()
-                yield from self._iterate_updates()
-                self._check_completed()
-
-                while len(self.batch) > 0:
-                    self.decode_step()
-                    yield from self._iterate_updates()
-                    self._check_completed()
-        finally:
-            gc.collect()
-            torch.cuda.empty_cache()
 
     def update_batch(self):
         if len(self.batch) != 0:
@@ -152,7 +169,6 @@ class TransformersEngine(InferenceEngine):
         # Convert initial logits to tokens
         self.process_logits_batch(logits, new_states)
 
-    @torch.inference_mode()
     def decode_step(self):
         # After the first step, only calculate attention of the new token.
         # Previous tokens are represented by the KV cache
@@ -293,6 +309,7 @@ class TransformersEngine(InferenceEngine):
             # Prevent updating output with partial stop strings
             if not partial_stop or state.resp.stopped:
                 state.set_output(output)
+                self.has_updates = True
 
     def process_inputs(self, requests: List[InferenceRequest]) -> List[InferenceState]:
         """
@@ -341,12 +358,18 @@ class TransformersEngine(InferenceEngine):
         return states
 
     def _iterate_updates(self) -> Iterable[InferenceResponse]:
+        if not self.has_updates:
+            return
+
         for state in self.batch:
             if state.resp.stopped or state.output_updated:
                 yield state.resp
                 state.output_updated = False
 
     def _check_completed(self):
+        if not self.has_updates:
+            return
+
         # Filter out completed indices
         indices: Set[int] = set()
         for i, state in enumerate(self.batch):
@@ -358,6 +381,14 @@ class TransformersEngine(InferenceEngine):
             self.kv_cache.discard(indices)
             self.encoder_cache.discard(indices)
             self.batch = [s for s in self.batch if not s.resp.stopped]
+
+        self.has_updates = False
+
+    def _clear(self):
+        self.kv_cache.clear()
+        self.encoder_cache.clear()
+        gc.collect()
+        torch.cuda.empty_cache()
 
 
 @dataclass
@@ -473,7 +504,11 @@ class PastKVCache:
                 for keys, vals in self.data
             )
         else:
-            self.data = tuple()
+            self.clear()
+
+    def clear(self):
+        del self.data
+        self.data = tuple()
 
 
 class EncoderCache:
@@ -514,4 +549,9 @@ class EncoderCache:
                 for hidden_states in self.data
             )
         else:
-            self.data = None
+            self.clear()
+
+    def clear(self):
+        del self.data
+        self.data = None
+

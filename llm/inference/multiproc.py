@@ -135,7 +135,7 @@ class MultiprocessEngine(InferenceEngine):
                         start = time()
                 delta = time() - start
 
-            for response in engine.run_batch(requests):
+            for response in engine.generate_batch_stream(requests):
                 pipe.send_response(response)
 
     def add_request(self, request: InferenceRequest) -> Queue[InferenceResponse]:

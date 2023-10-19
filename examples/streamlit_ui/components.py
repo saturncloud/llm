@@ -19,6 +19,7 @@ def setup_page(title: str):
     st.set_page_config(page_title=title, page_icon=":robot_face:", layout="wide")
     st.title(title, anchor=False)
     style_text()
+    init_session_state()
 
 
 def get_engine() -> InferenceEngine:
@@ -40,6 +41,9 @@ def get_engine() -> InferenceEngine:
 
 
 def init_session_state():
+    if st.session_state.get("initialized"):
+        return
+
     parser = ArgumentParser()
     parser.add_argument(
         "-d", "--qa-dataset-path", help="Document QA dataset path", default=DEFAULT_DATASET_PATH
@@ -102,6 +106,7 @@ def init_session_state():
         }
     else:  # vllm-client
         st.session_state["engine_kwargs"] = {"url": args.url}
+    st.session_state["initialized"] = True
 
 
 @st.cache_resource

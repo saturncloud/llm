@@ -48,7 +48,7 @@ class TransformersEngine(InferenceEngine):
         stream_interval: int = 2,
         echo_prompt: bool = False,
         stop_token_ids: Optional[List[int]] = None,
-        stop: Union[str, List[str]] = "",
+        stop_strings: Union[str, List[str]] = "",
         **logit_kwargs,
     ) -> Iterable[str]:
         logits_config = LogitsProcessorConfig(**logit_kwargs)
@@ -117,7 +117,7 @@ class TransformersEngine(InferenceEngine):
                 )
 
                 # Check string stopping conditions
-                stop_pos, partially_stopped = check_stop_str(output, stop, rfind_start)
+                stop_pos, partially_stopped = check_stop_str(output, stop_strings, rfind_start)
                 if stop_pos != -1:
                     output = output[:stop_pos]
                     stopped = True
@@ -262,7 +262,7 @@ class LogitsProcessorConfig:
 
 
 def check_stop_str(
-    output: str, stop: Union[str, List[str]], rfind_start: int = 0
+    output: str, stop_strings: Union[str, List[str]], rfind_start: int = 0
 ) -> Tuple[int, bool]:
     """
     Check for string based stopping conditions on the output
@@ -270,14 +270,14 @@ def check_stop_str(
     Return lowest index of any stop strings found, and a bool indicating if a partial stop_str
     was found at the end of the output.
     """
-    if not stop:
+    if not stop_strings:
         return -1, False
-    if isinstance(stop, str):
-        stop = [stop]
+    if isinstance(stop_strings, str):
+        stop_strings = [stop_strings]
 
     partial_stop = False
     stop_pos = -1
-    for stop_str in stop:
+    for stop_str in stop_strings:
         pos = output.rfind(stop_str, rfind_start)
         if pos != -1:
             output = output[:pos]

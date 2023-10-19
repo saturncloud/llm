@@ -62,7 +62,7 @@ if __name__ == "__main__":
             # No history in text summary, render only the latest input message
             prompt_str = prompt.render([input_message])
             for text in engine.generate_stream(
-                prompt_str, stop=prompt.stop_strings, **generation_kwargs
+                prompt_str, stop_strings=prompt.stop_strings, **generation_kwargs
             ):
                 answer.write(text)
                 input_message.response = text

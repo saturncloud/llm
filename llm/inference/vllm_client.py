@@ -21,21 +21,25 @@ class VLLMClient(InferenceEngine):
         prompt: str,
         max_new_tokens: int = 256,
         echo_prompt: bool = False,
-        stop: Union[str, List[str]] = "",
+        stop_strings: Union[str, List[str]] = "",
         **kwargs,
     ) -> Iterable[str]:
-        return self._request(prompt, max_new_tokens, echo_prompt, stop, stream=True, **kwargs)
+        return self._request(
+            prompt, max_new_tokens, echo_prompt, stop_strings, stream=True, **kwargs
+        )
 
     def generate(
         self,
         prompt: str,
         max_new_tokens: int = 256,
         echo_prompt: bool = False,
-        stop: Union[str, List[str]] = "",
+        stop_strings: Union[str, List[str]] = "",
         **kwargs,
     ) -> str:
         text = ""
-        for t in self._request(prompt, max_new_tokens, echo_prompt, stop, stream=False, **kwargs):
+        for t in self._request(
+            prompt, max_new_tokens, echo_prompt, stop_strings, stream=False, **kwargs
+        ):
             text = t
         return text
 
@@ -44,17 +48,17 @@ class VLLMClient(InferenceEngine):
         prompt: str,
         max_new_tokens: int,
         echo_prompt: bool,
-        stop: Union[str, List[str]],
+        stop_strings: Union[str, List[str]],
         stream: bool = True,
         **kwargs,
     ) -> Iterable[str]:
-        if not isinstance(stop, list):
-            stop = [stop]
+        if not isinstance(stop_strings, list):
+            stop_strings = [stop_strings]
         data = {
             "prompt": prompt,
             "stream": stream,
             "max_tokens": max_new_tokens,
-            "stop": stop,
+            "stop_strings": stop_strings,
             **kwargs,
         }
         url = os.path.join(self.base_url, "generate")
@@ -66,7 +70,7 @@ class VLLMClient(InferenceEngine):
                     data = json.loads(line)
                     answer = self._trim_answer(prompt, data["text"][0], echo_prompt=echo_prompt)
 
-                    _, partial_stop = check_stop_str(answer, stop)
+                    _, partial_stop = check_stop_str(answer, stop_strings)
                     if not partial_stop:
                         # Don't yield a partially completed stop string
                         yield answer

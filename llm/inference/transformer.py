@@ -148,7 +148,8 @@ class TransformersEngine(InferenceEngine):
         self.batch.extend(new_states)
 
         new_tokens = [s.input_ids for s in new_states]
-        max_length = len(max(new_tokens))
+        num_tokens = [len(tokens) for tokens in new_tokens]
+        max_length = max(num_tokens)
 
         padded = self.tokenizer.pad(
             {"input_ids": new_tokens},
@@ -285,6 +286,10 @@ class TransformersEngine(InferenceEngine):
         """
         Decode tokens and check for stopping conditions
         """
+        if not state.resp.stopped and not state.req.stop_strings:
+            # Skip decoding tokens when not needed
+            return
+
         stream_interval = state.req.stream_interval
         if (stream_interval > 0 and state.resp.tokens_generated % stream_interval == 0) or state.resp.stopped:
             # Decode tokens, and check if an update needs to be yielded
@@ -321,7 +326,7 @@ class TransformersEngine(InferenceEngine):
 
         # Collect input prompts and tokens
         for i, req in enumerate(requests):
-            if not req.stop_token_ids:
+            if req.stop_token_ids is None:
                 if self.tokenizer.eos_token_id is not None:
                     req.stop_token_ids = [self.tokenizer.eos_token_id]
             if isinstance(req.prompt, str):
@@ -400,7 +405,7 @@ class InferenceRequest(DataclassBase):
     stream_interval: int = 2
     echo_prompt: bool = False
     stop_strings: Union[str, List[str]] = ""
-    stop_token_ids: List[int] = field(default_factory=list)
+    stop_token_ids: Optional[List[int]] = None
 
     temperature: float = 1.0
     top_p: float = 1.0
@@ -446,11 +451,10 @@ class InferenceState:
     def add_token(self, token: int):
         self.tokens.append(token)
         self.resp.tokens_generated += 1
-        if token in self.req.stop_token_ids or self.resp.tokens_generated == self.req.max_new_tokens:
+        is_stop_token = self.req.stop_token_ids and (token in self.req.stop_token_ids)
+        if is_stop_token or self.resp.tokens_generated == self.req.max_new_tokens:
             self.set_stopped(
-                "max tokens"
-                if self.resp.tokens_generated == self.req.max_new_tokens
-                else "stop token"
+                "stop token" if is_stop_token else "max new tokens"
             )
 
     def set_stopped(self, reason: str):

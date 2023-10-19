@@ -5,7 +5,6 @@ from multiprocessing import Pipe, Process, set_start_method
 from threading import Lock, Thread
 from time import time
 from typing import Any, Dict, Iterable, List, Optional, Union, overload
-from uuid import uuid4
 
 import torch
 
@@ -106,7 +105,7 @@ class MultiprocessEngine(InferenceEngine):
         pipe: WorkerPipe,
         model_config: ModelConfig,
         local_rank: int,
-        max_wait: float = 1.0,
+        batch_max_wait: float = 0.5,
         signal_ready: bool = False,
         load_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs,
@@ -124,10 +123,10 @@ class MultiprocessEngine(InferenceEngine):
             delta: float = 0.0
 
             requests: List[InferenceRequest] = []
-            while len(engine.pending) < engine.batch_size and delta < max_wait:
+            while len(engine.pending) < engine.batch_size and delta < batch_max_wait:
                 # Wait indefinitely for the first request, collect additional
                 # requests over a short window before processing.
-                wait = max_wait - delta if requests else None
+                wait = batch_max_wait - delta if requests else None
                 request = pipe.get_request(wait)
                 if request:
                     requests.append(request)

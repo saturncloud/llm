@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from queue import Queue
 from multiprocessing import Pipe, Process, set_start_method
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Union
 
 import torch
 
@@ -88,9 +88,20 @@ class MultiprocessEngine(InferenceEngine):
     def generate_stream(
         self,
         prompt: str,
+        max_new_tokens: int = 256,
+        echo_prompt: bool = False,
+        stop_token_ids: Optional[List[int]] = None,
+        stop_strings: Union[str, List[str]] = "",
         **kwargs,
     ) -> Iterable[str]:
-        request = StreamRequest(prompt, **kwargs)
+        request = StreamRequest(
+            prompt,
+            max_new_tokens=max_new_tokens,
+            echo_prompt=echo_prompt,
+            stop_token_ids=stop_token_ids,
+            stop_strings=stop_strings,
+            **kwargs,
+        )
         # Wait for a worker to be available
         worker = self.queue.get()
         try:

@@ -21,11 +21,18 @@ class VLLMClient(InferenceEngine):
         prompt: str,
         max_new_tokens: int = 256,
         echo_prompt: bool = False,
+        stop_token_ids: Optional[List[int]] = None,
         stop_strings: Union[str, List[str]] = "",
         **kwargs,
     ) -> Iterable[str]:
         return self._request(
-            prompt, max_new_tokens, echo_prompt, stop_strings, stream=True, **kwargs
+            prompt,
+            max_new_tokens=max_new_tokens,
+            echo_prompt=echo_prompt,
+            stop_token_ids=stop_token_ids,
+            stop_strings=stop_strings,
+            stream=True,
+            **kwargs,
         )
 
     def generate(
@@ -33,12 +40,19 @@ class VLLMClient(InferenceEngine):
         prompt: str,
         max_new_tokens: int = 256,
         echo_prompt: bool = False,
+        stop_token_ids: Optional[List[int]] = None,
         stop_strings: Union[str, List[str]] = "",
         **kwargs,
     ) -> str:
         text = ""
         for t in self._request(
-            prompt, max_new_tokens, echo_prompt, stop_strings, stream=False, **kwargs
+            prompt,
+            max_new_tokens=max_new_tokens,
+            echo_prompt=echo_prompt,
+            stop_token_ids=stop_token_ids,
+            stop_strings=stop_strings,
+            stream=False,
+            **kwargs,
         ):
             text = t
         return text
@@ -48,7 +62,8 @@ class VLLMClient(InferenceEngine):
         prompt: str,
         max_new_tokens: int,
         echo_prompt: bool,
-        stop_strings: Union[str, List[str]],
+        stop_token_ids: Optional[List[int]] = None,
+        stop_strings: Union[str, List[str]] = "",
         stream: bool = True,
         **kwargs,
     ) -> Iterable[str]:
@@ -59,6 +74,7 @@ class VLLMClient(InferenceEngine):
             "stream": stream,
             "max_tokens": max_new_tokens,
             "stop_strings": stop_strings,
+            "stop_token_ids": stop_token_ids,
             **kwargs,
         }
         url = os.path.join(self.base_url, "generate")

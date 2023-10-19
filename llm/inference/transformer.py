@@ -45,10 +45,10 @@ class TransformersEngine(InferenceEngine):
         self,
         prompt: str,
         max_new_tokens: int = 256,
-        stream_interval: int = 2,
         echo_prompt: bool = False,
         stop_token_ids: Optional[List[int]] = None,
         stop_strings: Union[str, List[str]] = "",
+        stream_interval: int = 2,
         **logit_kwargs,
     ) -> Iterable[str]:
         logits_config = LogitsProcessorConfig(**logit_kwargs)

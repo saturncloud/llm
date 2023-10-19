@@ -59,13 +59,13 @@ def filter_contexts(qa_session: QASession, included: List[bool]):
 if __name__ == "__main__":
     setup_page("Document QA")
 
-    engine = get_engine()
     dataset_path = st.session_state.get("qa_dataset_path")
     index_path = st.session_state.get("qa_index_path")
     context_model = st.session_state.get("qa_context_model", DEFAULT_EMBEDDING_MODEL)
     if not dataset_path:
         raise Exception("No dataset path given. Unable to run Document QA.")
 
+    engine = get_engine()
     vector_store = get_vector_store(context_model, dataset_path, index_path=index_path)
     qa_session = get_qa_session(st.session_state.model_config, engine, vector_store)
 

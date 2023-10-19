@@ -363,6 +363,7 @@ class TransformersEngine(InferenceEngine):
 class InferenceRequest(DataclassBase):
     prompt: Union[str, List[int]]
 
+    uid: str = field(default_factory=lambda: uuid4().hex)
     max_new_tokens: int = 256
     stream_interval: int = 2
     echo_prompt: bool = False
@@ -374,8 +375,6 @@ class InferenceRequest(DataclassBase):
     top_k: int = -1
     repetition_penalty: float = 1.0
     do_sampling: Optional[bool] = None
-
-    uid: str = field(init=False, default_factory=lambda: uuid4().hex)
 
 
 @dataclass

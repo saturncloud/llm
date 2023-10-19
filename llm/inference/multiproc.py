@@ -193,11 +193,11 @@ class WorkerPipe:
         # Send as dict to make pickling more reliable
         self.parent_conn.send(request.to_dict())
 
-    def get_response(self) -> Optional[InferenceResponse]:
+    def get_response(self, timeout: Optional[float] = None) -> Optional[InferenceResponse]:
+        if timeout is not None and not self.parent_conn.poll(timeout):
+            return None
         response = self.parent_conn.recv()
-        if response is None:
-            return response
-        return InferenceResponse.from_dict(response)
+        return InferenceResponse.from_dict(response) if response else None
 
     def clear_responses(self):
         while self.parent_conn.poll():
@@ -222,4 +222,4 @@ class WorkerPipe:
         return InferenceRequest.from_dict(self.child_conn.recv())
 
     def send_response(self, response: Optional[InferenceResponse]):
-        self.child_conn.send(response.to_dict() if response else response)
+        self.child_conn.send(response.to_dict() if response else None)

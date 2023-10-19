@@ -130,12 +130,11 @@ class TransformersEngine(InferenceEngine):
         self.pending = self.pending[num:]
         self.batch.extend(new_states)
 
-        new_tokens = [s.request.input_ids for s in new_states]
-        new_masks = [s.request.attention_mask for s in new_states]
+        new_tokens = [s.input_ids for s in new_states]
         max_length = len(max(new_tokens))
 
         padded = self.tokenizer.pad(
-            {"input_ids": new_tokens, "attention_mask": new_masks},
+            {"input_ids": new_tokens},
             padding="max_length",
             max_length=max_length,
             return_attention_mask=True,
@@ -233,7 +232,7 @@ class TransformersEngine(InferenceEngine):
             token = self.process_logits(
                 logits[i],
                 state.tokens,
-                logits_config=state.request.logits_config,
+                logits_config=state.logits_config,
             )
             state.add_token(token)
             self.process_output(state)
@@ -270,11 +269,11 @@ class TransformersEngine(InferenceEngine):
         """
         Decode tokens and check for stopping conditions
         """
-        stream_interval = state.request.stream_interval
+        stream_interval = state.req.stream_interval
         if (stream_interval > 0 and state.num_generated % stream_interval == 0) or state.stopped:
             # Decode tokens, and check if an update needs to be yielded
-            if state.request.echo_prompt:
-                rfind_start = len(state.request.prompt)
+            if state.req.echo_prompt:
+                rfind_start = len(state.prompt)
             else:
                 rfind_start = 0
 
@@ -286,7 +285,7 @@ class TransformersEngine(InferenceEngine):
             )
 
             # Check string stopping conditions
-            stop_pos, partial_stop = check_stop_str(output, state.request.stop, rfind_start)
+            stop_pos, partial_stop = check_stop_str(output, state.req.stop, rfind_start)
             if stop_pos != -1:
                 output = output[:stop_pos]
                 state.set_stopped("stop string")
@@ -299,28 +298,46 @@ class TransformersEngine(InferenceEngine):
         """
         Prepare requests for inference
         """
-        for req in requests:
+        prompts: List[str] = [""] * len(requests)
+        input_ids: List[List[int]] = [[]] * len(requests)
+        to_tokenize: List[Tuple[i, str]] = []
+
+        # Collect input prompts and tokens
+        for i, req in enumerate(requests):
             if not req.stop_token_ids:
                 if self.tokenizer.eos_token_id is not None:
                     req.stop_token_ids = [self.tokenizer.eos_token_id]
+            if isinstance(req.prompt, str):
+                to_tokenize.append((i, req.prompt))
+                prompts[i] = req.prompt
+            else:
+                input_ids[i] = req.prompt
+                prompts[i] = self.tokenizer.decode(
+                    req.prompt,
+                    skip_special_tokens=True,
+                    spaces_between_special_tokens=False,
+                    clean_up_tokenization_spaces=True,
+                )
 
-        # Tokenize and collect inputs
+        # Tokenize str prompts
         inputs = self.tokenizer(
-            [req.prompt for req in requests],
+            [prompt for _, prompt in to_tokenize],
             padding=False,
             add_special_tokens=False,
-            return_attention_mask=True,
+            return_attention_mask=False,
         )
-        batch_state: List[InferenceState] = []
-        for i, req in enumerate(requests):
-            req.input_ids = inputs.input_ids[i]
-            req.attention_mask = inputs.attention_mask[i]
+        for tokens, (i, _) in zip(inputs.input_ids, to_tokenize):
+            input_ids[i] = tokens
 
-            state = InferenceState(req)
-            if len(req.input_ids) + req.max_new_tokens >= self.max_length:
+        # Collect states
+        states: List[InferenceState] = []
+        for prompt, tokens, req in zip(prompts, input_ids, requests):
+            state = InferenceState(req, prompt, tokens)
+            if len(tokens) + req.max_new_tokens >= self.max_length:
                 state.set_stopped("input too long")
-            batch_state.append(state)
-        return batch_state
+            states.append(state)
+
+        return states
 
     def _iterate_updates(self) -> Iterable[InferenceState]:
         for state in self.batch:
@@ -344,7 +361,8 @@ class TransformersEngine(InferenceEngine):
 
 @dataclass
 class InferenceRequest:
-    prompt: str
+    prompt: Union[str, List[int]]
+
     uid: str = field(default_factory=lambda: uuid4().hex)
     max_new_tokens: int = 256
     stream_interval: int = 2
@@ -359,18 +377,13 @@ class InferenceRequest:
     repetition_penalty: float = 1.0
     do_sampling: Optional[bool] = None
 
-    input_ids: List[int] = field(init=False)
-    attention_mask: List[int] = field(init=False)
-    logits_config: LogitsProcessorConfig = field(init=False)
-
-    def __post_init__(self):
-        self.logits_config = LogitsProcessorConfig(
-            temperature=self.temperature, top_p=self.top_p, top_k = self.top_k, repetition_penalty=self.repetition_penalty, do_sampling=self.do_sampling
-        )
 
 @dataclass
 class InferenceState:
-    request: InferenceRequest
+    req: InferenceRequest
+    prompt: str
+    input_ids: List[int]
+
     num_generated: int = 0
     output: str = ""
     output_updated: bool = False
@@ -378,20 +391,28 @@ class InferenceState:
     stopped_reason: str = ""
 
     tokens: List[int] = field(init=False)
+    logits_config: LogitsProcessorConfig = field(init=False)
 
     def __post_init__(self):
-        if self.request.echo_prompt:
-            self.tokens = list(self.request.input_ids)
+        if self.req.echo_prompt:
+            self.tokens = list(self.input_ids)
         else:
             self.tokens = []
+        self.logits_config = LogitsProcessorConfig(
+            temperature=self.req.temperature,
+            top_p=self.req.top_p,
+            top_k = self.req.top_k,
+            repetition_penalty=self.req.repetition_penalty,
+            do_sampling=self.req.do_sampling,
+        )
 
     def add_token(self, token: int):
         self.tokens.append(token)
         self.num_generated += 1
-        if token in self.request.stop_token_ids or self.num_generated == self.request.max_new_tokens:
+        if token in self.req.stop_token_ids or self.num_generated == self.req.max_new_tokens:
             self.set_stopped(
                 "max tokens"
-                if self.num_generated == self.request.max_new_tokens
+                if self.num_generated == self.req.max_new_tokens
                 else "stop token"
             )
 

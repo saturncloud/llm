@@ -127,7 +127,7 @@ class MultiprocessEngine(InferenceEngine):
                 delta = time() - start
 
             for state in engine.run_batch(requests):
-                pipe.send_response(StreamResponse(state.request.uid, state.output, state.stopped, state.stopped_reason))
+                pipe.send_response(StreamResponse(state.req.uid, state.output, state.stopped, state.stopped_reason))
 
     def add_request(self, request: StreamRequest) -> Queue[StreamResponse]:
         """

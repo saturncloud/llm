@@ -73,7 +73,7 @@ if __name__ == "__main__":
             answer = chat_bubble("assistant")
             prompt_str = conversation.render(prompt)
             for text in engine.generate_stream(
-                prompt_str, stop=prompt.stop_strings, **generation_kwargs
+                prompt_str, stop_strings=prompt.stop_strings, **generation_kwargs
             ):
                 answer.text(text)
                 input_message.response = text

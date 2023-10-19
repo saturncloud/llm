@@ -84,7 +84,7 @@ class QASession:
             print(f"\n** Context Input **\n{input_text}")
 
         gen_kwargs = {
-            "stop": self.qa_prompt.stop_strings,
+            "stop_strings": self.qa_prompt.stop_strings,
             **kwargs,
         }
 
@@ -128,7 +128,7 @@ class QASession:
             print(f"\n** Standalone Input **\n{input_text}")
 
         params = {
-            "stop": self.rephrase_prompt.stop_strings,
+            "stop_strings": self.rephrase_prompt.stop_strings,
             **kwargs,
         }
         standalone = self.engine.generate(input_text, **params).strip()

@@ -3,7 +3,8 @@ from typing import Dict, Any
 from os.path import join
 import pathlib
 
-import torch
+# Workaround for: https://github.com/comet-ml/issue-tracking/issues/523
+import torch  # noqa
 
 # import experiment tracking imports before ML toolkits
 import llm.experiment_tracking_imports  # noqa
@@ -13,7 +14,6 @@ from transformers import (
     AutoTokenizer,
     default_data_collator,
     Trainer,
-    BitsAndBytesConfig,
 )
 from peft import prepare_model_for_kbit_training, get_peft_model
 from ruamel.yaml import YAML

@@ -31,6 +31,7 @@ class MultiprocessEngine(InferenceEngine):
         model_config: ModelConfig,
         num_workers: Optional[int] = None,
         wait: bool = True,
+        load_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> MultiprocessEngine:
         # Required for CUDA
@@ -47,7 +48,7 @@ class MultiprocessEngine(InferenceEngine):
                 None,
                 cls._transformers_worker,
                 args=[worker, model_config, i],
-                kwargs={"signal_ready": wait, **kwargs},
+                kwargs={"signal_ready": wait, "load_kwargs": load_kwargs, **kwargs},
                 daemon=True,
             )
             watch_proc.start()
@@ -66,10 +67,13 @@ class MultiprocessEngine(InferenceEngine):
         model_config: ModelConfig,
         local_rank: int,
         signal_ready: bool = False,
+        load_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs,
     ):
+        load_kwargs = load_kwargs or {}
+        load_kwargs.setdefault("device_map", {"": local_rank})
         engine = TransformersEngine.from_model_config(
-            model_config, device_map={"": local_rank}, **kwargs
+            model_config, load_kwargs=load_kwargs, **kwargs
         )
         if signal_ready:
             pipe.send_response(None)

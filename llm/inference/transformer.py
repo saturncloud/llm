@@ -2,7 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import gc
 
-from typing import Iterable, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import torch
 from transformers import (
@@ -35,9 +35,10 @@ class TransformersEngine(InferenceEngine):
         self.max_length = max_length
 
     @classmethod
-    def from_model_config(cls, model_config: ModelConfig, **kwargs) -> TransformersEngine:
-        model, tokenizer = model_config.load(**kwargs)
-        return cls(model, tokenizer, max_length=model_config.max_length)
+    def from_model_config(cls, model_config: ModelConfig, load_kwargs: Optional[Dict[str, Any]] = None, **kwargs) -> TransformersEngine:
+        model, tokenizer = model_config.load(**(load_kwargs or {}))
+        kwargs.setdefault("max_length", model_config.max_length)
+        return cls(model, tokenizer, **kwargs)
 
     @torch.inference_mode()
     def generate_stream(

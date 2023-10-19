@@ -301,7 +301,7 @@ class TransformersEngine(InferenceEngine):
             )
 
             # Check string stopping conditions
-            stop_pos, partial_stop = check_stop_str(output, state.req.stop, rfind_start)
+            stop_pos, partial_stop = check_stop_str(output, state.req.stop_strings, rfind_start)
             if stop_pos != -1:
                 output = output[:stop_pos]
                 state.set_stopped("stop string")
@@ -399,7 +399,7 @@ class InferenceRequest(DataclassBase):
     max_new_tokens: int = 256
     stream_interval: int = 2
     echo_prompt: bool = False
-    stop: Union[str, List[str]] = ""
+    stop_strings: Union[str, List[str]] = ""
     stop_token_ids: List[int] = field(default_factory=list)
 
     temperature: float = 1.0

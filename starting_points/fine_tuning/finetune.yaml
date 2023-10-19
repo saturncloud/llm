@@ -1,0 +1,10 @@
+base_model: ...
+train_dataset_config:
+  method: load_from_disk
+  kwargs:
+    dataset_path: "/tmp/train"
+local_output: /tmp/finetune
+load_in_4bit: true
+# load_in_8bit: true
+training_arguments:
+  max_steps: 100

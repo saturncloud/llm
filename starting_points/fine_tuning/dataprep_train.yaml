@@ -1,0 +1,15 @@
+source_config:
+  method: load_from_disk
+  kwargs:
+    dataset_path: ...
+#source_config:
+#  method: load_dataset
+#  kwargs:
+#    path: ...
+base_model: ...
+prompt_config:
+  method: DefaultPrompt
+dataset_writer_config:
+  method: save_to_disk
+  kwargs:
+    dataset_path: "/tmp/train"

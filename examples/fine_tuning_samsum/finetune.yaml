@@ -1,0 +1,11 @@
+base_model: "meta-llama/Llama-2-7b-hf"
+train_dataset_config:
+  method: load_from_disk
+  kwargs:
+    dataset_path: "/tmp/samsum-train"
+training_arguments:
+  logging_steps: 2
+  max_steps: 100
+local_output: /tmp/samsum
+load_in_4bit: true
+# load_in_8bit: true

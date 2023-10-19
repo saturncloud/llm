@@ -73,9 +73,13 @@ class MultiprocessEngine(InferenceEngine):
         Watches for requests, and schedules them to workers
         """
         while True:
-            request = self._requests.get()
-            # TODO: Scheduling across workers
-            self._workers[0].send_request(request)
+            try:
+                request = self._requests.get()
+                # TODO: Scheduling across workers
+                self._workers[0].send_request(request)
+            except OSError:
+                # Workers closed
+                break
 
     def _response_manager(self, worker: WorkerPipe):
         """
@@ -83,7 +87,12 @@ class MultiprocessEngine(InferenceEngine):
         them to the associated output stream
         """
         while True:
-            response = worker.get_response()
+            try:
+                response = worker.get_response()
+            except EOFError:
+                # Worker closed
+                break
+
             if response:
                 uid = response.uid
                 stream = self._active_streams.get(uid)

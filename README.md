@@ -160,9 +160,6 @@ B: What do you want to do?
 A: I want to get a puppy for my son.
 Assistant: Summary: Tom and his friend are going to the animal shelter to get a puppy for Tom's son.
 ```
-Similar to above, I think there's an extra \n here?
-
-And maybe add a little bit of extra detail about why this is useful like:
 
 The User and Assistant roles help Vicuna identify the components of the prompt, while the Conversation and 
 Summary prompt templating serves as a callback to the task in the system message. During inference 

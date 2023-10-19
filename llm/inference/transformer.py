@@ -29,7 +29,7 @@ class TransformersEngine(InferenceEngine):
         model: PreTrainedModel,
         tokenizer: PreTrainedTokenizerBase,
         max_length: int = 2048,
-        batch_size: int = 4,
+        batch_size: int = 8,
     ):
         self.model = model
         self.tokenizer = tokenizer
@@ -320,14 +320,15 @@ class TransformersEngine(InferenceEngine):
                 )
 
         # Tokenize str prompts
-        inputs = self.tokenizer(
-            [prompt for _, prompt in to_tokenize],
-            padding=False,
-            add_special_tokens=False,
-            return_attention_mask=False,
-        )
-        for tokens, (i, _) in zip(inputs.input_ids, to_tokenize):
-            input_ids[i] = tokens
+        if to_tokenize:
+            inputs = self.tokenizer(
+                [prompt for _, prompt in to_tokenize],
+                padding=False,
+                add_special_tokens=False,
+                return_attention_mask=False,
+            )
+            for tokens, (i, _) in zip(inputs.input_ids, to_tokenize):
+                input_ids[i] = tokens
 
         # Collect states
         states: List[InferenceState] = []

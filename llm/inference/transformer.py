@@ -11,7 +11,7 @@ from transformers import (
     PreTrainedTokenizerBase,
 )
 from llm.inference.base import InferenceEngine
-from llm.inference.utils import LogitsProcessorConfig, check_stop_str
+from llm.inference.utils import DataclassBase, LogitsProcessorConfig, check_stop_str
 from llm.model_configs import ModelConfig
 
 Logits = torch.FloatTensor
@@ -105,7 +105,7 @@ class TransformersEngine(InferenceEngine):
         states = self.process_inputs(requests)
         self.pending.extend(states)
 
-    def run_batch(self, requests: List[InferenceRequest]) -> Iterable[InferenceState]:
+    def run_batch(self, requests: List[InferenceRequest]) -> Iterable[InferenceResponse]:
         try:
             self.add_requests(requests)
             while self.pending:
@@ -270,7 +270,7 @@ class TransformersEngine(InferenceEngine):
         Decode tokens and check for stopping conditions
         """
         stream_interval = state.req.stream_interval
-        if (stream_interval > 0 and state.num_generated % stream_interval == 0) or state.stopped:
+        if (stream_interval > 0 and state.resp.tokens_generated % stream_interval == 0) or state.resp.stopped:
             # Decode tokens, and check if an update needs to be yielded
             if state.req.echo_prompt:
                 rfind_start = len(state.prompt)
@@ -291,7 +291,7 @@ class TransformersEngine(InferenceEngine):
                 state.set_stopped("stop string")
 
             # Prevent updating output with partial stop strings
-            if not partial_stop or state.stopped:
+            if not partial_stop or state.resp.stopped:
                 state.set_output(output)
 
     def process_inputs(self, requests: List[InferenceRequest]) -> List[InferenceState]:
@@ -339,43 +339,52 @@ class TransformersEngine(InferenceEngine):
 
         return states
 
-    def _iterate_updates(self) -> Iterable[InferenceState]:
+    def _iterate_updates(self) -> Iterable[InferenceResponse]:
         for state in self.batch:
-            if state.stopped or state.output_updated:
-                yield state
+            if state.resp.stopped or state.output_updated:
+                yield state.resp
                 state.output_updated = False
 
     def _check_completed(self):
         # Filter out completed indices
         indices: Set[int] = set()
         for i, state in enumerate(self.batch):
-            if state.stopped:
+            if state.resp.stopped:
                 indices.add(i)
 
         if indices:
             # Filter out cache values for completed requests
             self.kv_cache.discard(indices)
             self.encoder_cache.discard(indices)
-            self.batch = [s for s in self.batch if not s.stopped]
+            self.batch = [s for s in self.batch if not s.resp.stopped]
 
 
 @dataclass
-class InferenceRequest:
+class InferenceRequest(DataclassBase):
     prompt: Union[str, List[int]]
 
-    uid: str = field(default_factory=lambda: uuid4().hex)
     max_new_tokens: int = 256
     stream_interval: int = 2
     echo_prompt: bool = False
     stop: Union[str, List[str]] = ""
     stop_token_ids: List[int] = field(default_factory=list)
 
-    # TODO: This better
     temperature: float = 1.0
     top_p: float = 1.0
     top_k: int = -1
     repetition_penalty: float = 1.0
     do_sampling: Optional[bool] = None
+
+    uid: str = field(init=False, default_factory=lambda: uuid4().hex)
+
+
+@dataclass
+class InferenceResponse(DataclassBase):
+    uid: str
+    output: str = ""
+    stopped: bool = False
+    stopped_reason: str = ""
+    tokens_generated: int = 0
 
 
 @dataclass
@@ -383,17 +392,14 @@ class InferenceState:
     req: InferenceRequest
     prompt: str
     input_ids: List[int]
-
-    num_generated: int = 0
-    output: str = ""
     output_updated: bool = False
-    stopped: bool = False
-    stopped_reason: str = ""
 
+    resp: InferenceResponse = field(init=False)
     tokens: List[int] = field(init=False)
     logits_config: LogitsProcessorConfig = field(init=False)
 
     def __post_init__(self):
+        self.resp = InferenceResponse(self.req.uid)
         if self.req.echo_prompt:
             self.tokens = list(self.input_ids)
         else:
@@ -408,20 +414,20 @@ class InferenceState:
 
     def add_token(self, token: int):
         self.tokens.append(token)
-        self.num_generated += 1
-        if token in self.req.stop_token_ids or self.num_generated == self.req.max_new_tokens:
+        self.resp.tokens_generated += 1
+        if token in self.req.stop_token_ids or self.resp.tokens_generated == self.req.max_new_tokens:
             self.set_stopped(
                 "max tokens"
-                if self.num_generated == self.req.max_new_tokens
+                if self.resp.tokens_generated == self.req.max_new_tokens
                 else "stop token"
             )
 
     def set_stopped(self, reason: str):
-        self.stopped = True
-        self.stopped_reason = reason
+        self.resp.stopped = True
+        self.resp.stopped_reason = reason
 
     def set_output(self, output: str):
-        self.output = output
+        self.resp.output = output
         self.output_updated = True
 
 

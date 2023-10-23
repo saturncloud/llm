@@ -20,7 +20,7 @@ class MultiprocessEngine(InferenceEngine):
     Enables thread-safe non-blocking inference across multiple devices
     """
 
-    def __init__(self, workers: List[WorkerPipe], batch_size: int = 8, max_delay: float = 1.0, max_pending: int = -1):
+    def __init__(self, workers: List[WorkerPipe], batch_size: int = 8, max_delay: float = 0.5, max_pending: int = -1):
         self._workers = workers
         self._closed = False
         self.batch_size = batch_size

@@ -15,7 +15,7 @@ from llm.inference.utils import DataclassBase, LogitsProcessorConfig, check_stop
 from llm.model_configs import ModelConfig
 
 Logits = torch.FloatTensor
-EncoderHiddenState = Tuple[torch.FloatTensor]
+EncoderHiddenState = torch.FloatTensor
 PastKeyValues = Tuple[Tuple[torch.FloatTensor, torch.FloatTensor]]
 
 
@@ -174,13 +174,13 @@ class TransformersEngine(InferenceEngine):
         )
 
         # First step calculates attention of full input, and caches past key values
-        logits, past_key_values, encoder_output = self.prefill(
+        logits, past_key_values, encoder_hidden_state = self.prefill(
             padded.input_ids, padded.attention_mask
         )
 
         # Update caches
         self.kv_cache.append(past_key_values)
-        self.encoder_cache.append(encoder_output)
+        self.encoder_cache.append(encoder_hidden_state)
 
         # Convert initial logits to tokens
         self.process_logits_batch(logits, new_states)
@@ -192,7 +192,7 @@ class TransformersEngine(InferenceEngine):
         It is assumed that the attention cache has been prefilled for the batch first.
         """
         logits, past_key_values = self.decoder(
-            [state.tokens[-1] for state in self.batch], self.kv_cache.data, encoder_output=self.encoder_cache.data
+            [state.tokens[-1] for state in self.batch], self.kv_cache.data, encoder_hidden_state=self.encoder_cache.data
         )
         self.kv_cache.set(past_key_values)
         self.process_logits_batch(logits)
@@ -208,10 +208,10 @@ class TransformersEngine(InferenceEngine):
         """
         input_tensor = torch.as_tensor(input_ids, device=self.model.device)
         attention_tensor = torch.as_tensor(attention_mask, device=self.model.device) if attention_mask else None
-        encoder_output: Optional[EncoderHiddenState] = None
+        encoder_hidden_state: Optional[EncoderHiddenState] = None
         if self.model.config.is_encoder_decoder:
             # Encoder-Decoder models
-            encoder_output = self.model.encoder(input_ids=input_tensor, attention_mask=attention_tensor)
+            encoder_hidden_state = self.model.encoder(input_ids=input_tensor, attention_mask=attention_tensor).last_hidden_state
             start_ids = torch.as_tensor(
                 [[self.model.generation_config.decoder_start_token_id]] * len(input_ids),
                 dtype=torch.int64,
@@ -219,21 +219,21 @@ class TransformersEngine(InferenceEngine):
             )
             out = self.model.decoder(
                 input_ids=start_ids,
-                encoder_hidden_states=encoder_output,
+                encoder_hidden_states=encoder_hidden_state,
                 use_cache=True,
             )
-            logits = self.model.lm_head(out)
+            logits = self.model.lm_head(out.last_hidden_state)
         else:
             # Decoder-only models
             out = self.model(input_tensor, attention_mask=attention_tensor, use_cache=True)
             logits = out.logits
-        return logits, out.past_key_values, encoder_output
+        return logits, out.past_key_values, encoder_hidden_state
 
     def decoder(
         self,
         last_tokens: List[int],
         past_key_values: PastKeyValues,
-        encoder_output: Optional[EncoderHiddenState] = None,
+        encoder_hidden_state: Optional[EncoderHiddenState] = None,
     ) -> Tuple[Logits, PastKeyValues]:
         """
         Run a single model decoder step. Only calculate attention on the most recent token generated,
@@ -244,11 +244,11 @@ class TransformersEngine(InferenceEngine):
             # Encoder-Decoder models
             out = self.model.decoder(
                 input_ids=input_tensor,
-                encoder_hidden_states=encoder_output,
+                encoder_hidden_states=encoder_hidden_state,
                 use_cache=True,
                 past_key_values=past_key_values,
             )
-            logits = self.model.lm_head(out)
+            logits = self.model.lm_head(out.last_hidden_state)
         else:
             # Decoder-only models
             out = self.model(
@@ -501,7 +501,7 @@ class PastKVCache:
     def batch_size(self) -> int:
         if not self.data:
             return 0
-        return len(self.data[0][0])
+        return self.data[0][0].shape[0]
 
     @property
     def sequence_length(self) -> int:
@@ -548,37 +548,29 @@ class EncoderCache:
 
     @property
     def batch_size(self) -> int:
-        if not self.data:
+        if self.data is None:
             return 0
-        return len(self.data[0])
+        return self.data.shape[0]
 
     def set(self, data: Optional[EncoderHiddenState]):
         self.data = data
 
     def append(self, data: Optional[EncoderHiddenState]):
-        if not data:
+        if data is None:
             return
-        if not self.data:
+        if self.data is None:
             self.data = data
             return
-
-        # TODO: Validate shape of encoder data has batch at dim 0
-        self.data = tuple(
-            torch.cat(s1, s2, dim=0)
-            for s1, s2 in zip(self.data, data)
-        )
+        self.data = torch.cat(self.data, data, dim=0)
 
     def discard(self, indices: Iterable[int]):
-        if not indices or not self.data:
+        if not indices or self.data is None:
             return
         if not isinstance(indices, set):
             indices = set(indices)
         to_keep = [i for i in range(self.batch_size) if i not in indices]
         if len(to_keep) > 0:
-            self.data = tuple(
-                (hidden_states[to_keep])
-                for hidden_states in self.data
-            )
+            self.data = self.data[to_keep]
         else:
             self.clear()
 

@@ -58,6 +58,11 @@ class TransformersEngine(InferenceEngine):
 
     @torch.inference_mode()
     def generate_batch_stream(self, requests: List[InferenceRequest]) -> Iterable[InferenceResponse]:
+        """
+        Generate responses for multiple requests in batches. Responses are streamed individually
+        as they recieve updates. Once a response has been marked "stopped", it will no longer be
+        yielded.
+        """
         try:
             self.add_requests(requests)
             while self.pending:
@@ -74,6 +79,10 @@ class TransformersEngine(InferenceEngine):
 
     @torch.inference_mode()
     def generate_batch(self, requests: List[InferenceRequest]) -> List[InferenceResponse]:
+        """
+        Generate responses for multiple requests in batches. Responses are returned in the order
+        in which they were recieved after all requests have been completed.
+        """
         self.add_requests(requests)
         all_states: List[InferenceState] = []
         while self.pending:
@@ -139,6 +148,12 @@ class TransformersEngine(InferenceEngine):
         self.pending.extend(states)
 
     def update_batch(self):
+        """
+        Pull requests from pending into a new batch, and run the prefill step
+        to initialize the attention cache from input tokens.
+
+        Currently only static-batching is supported.
+        """
         if len(self.batch) != 0:
             raise Exception("Updating an in-progress batch is not currently supported.")
 
@@ -171,8 +186,11 @@ class TransformersEngine(InferenceEngine):
         self.process_logits_batch(logits, new_states)
 
     def decode_step(self):
-        # After the first step, only calculate attention of the new token.
-        # Previous tokens are represented by the KV cache
+        """
+        Get the next token for each state in the current batch.
+
+        It is assumed that the attention cache has been prefilled for the batch first.
+        """
         logits, past_key_values = self.decoder(
             [state.tokens[-1] for state in self.batch], self.kv_cache.data, encoder_output=self.encoder_cache.data
         )
@@ -398,6 +416,9 @@ class TransformersEngine(InferenceEngine):
 
 @dataclass
 class InferenceRequest(DataclassBase):
+    """
+    Input data for inference
+    """
     prompt: Union[str, List[int]]
 
     uid: str = field(default_factory=lambda: uuid4().hex)
@@ -416,6 +437,9 @@ class InferenceRequest(DataclassBase):
 
 @dataclass
 class InferenceResponse(DataclassBase):
+    """
+    Ouput data from inference.
+    """
     uid: str
     output: str = ""
     stopped: bool = False
@@ -425,6 +449,9 @@ class InferenceResponse(DataclassBase):
 
 @dataclass
 class InferenceState:
+    """
+    Stores information about an in-progress inference request/response
+    """
     req: InferenceRequest
     prompt: str
     input_ids: List[int]

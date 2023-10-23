@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from queue import Queue
+from queue import Empty, Queue
 from multiprocessing import Pipe, Process, set_start_method
 from threading import Lock, Thread
 from time import time
@@ -20,9 +20,11 @@ class MultiprocessEngine(InferenceEngine):
     Enables thread-safe non-blocking inference across multiple devices
     """
 
-    def __init__(self, workers: List[WorkerPipe], max_pending: int = -1):
+    def __init__(self, workers: List[WorkerPipe], batch_size: int = 8, max_delay: float = 1.0, max_pending: int = -1):
         self._workers = workers
         self._closed = False
+        self.batch_size = batch_size
+        self.max_delay = max_delay
         self._requests: Queue[InferenceRequest] = Queue(max_pending)
         self._active_streams: Dict[str, Queue[InferenceResponse]] = {}
         self._streams_lock = Lock()
@@ -36,6 +38,7 @@ class MultiprocessEngine(InferenceEngine):
         cls,
         model_config: ModelConfig,
         num_workers: Optional[int] = None,
+        batch_size: int = 8,
         wait: bool = True,
         load_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs,
@@ -54,7 +57,7 @@ class MultiprocessEngine(InferenceEngine):
                 None,
                 cls._transformers_worker,
                 args=[worker, model_config, i],
-                kwargs={"signal_ready": wait, "load_kwargs": load_kwargs, **kwargs},
+                kwargs={"signal_ready": wait, "load_kwargs": load_kwargs, "batch_size": batch_size},
                 daemon=True,
             )
             watch_proc.start()
@@ -65,20 +68,39 @@ class MultiprocessEngine(InferenceEngine):
                 # Collect initial sentinel values indicating the workers have loaded
                 worker.get_response()
 
-        return cls(workers)
+        return cls(workers, batch_size=batch_size, **kwargs)
 
     def _requests_manager(self):
         """
         Watches for requests, and schedules them to workers
         """
+        next_worker = 0
         while True:
+            batch = self._collect_batch()
             try:
-                request = self._requests.get()
-                # TODO: Scheduling across workers
-                self._workers[0].send_request(request)
+                self._workers[next_worker].send_request(batch)
             except OSError:
                 # Workers closed
                 break
+            next_worker = (next_worker + 1) % len(self._workers)
+
+    def _collect_batch(self) -> List[InferenceRequest]:
+        requests: List[InferenceRequest] = []
+        delta = 0.0
+        start = time()
+        while len(requests) < self.batch_size and delta < self.max_delay:
+            # Wait indefinitely for the first request, collect additional
+            # requests over a short window before sending to be processed.
+            wait = self.max_delay - delta if requests else None
+            try:
+                req = self._requests.get(timeout=wait)
+                requests.append(req)
+                if not wait:
+                    start = time()
+            except Empty:
+                break
+            delta = time() - start
+        return requests
 
     def _response_manager(self, worker: WorkerPipe):
         """
@@ -105,7 +127,6 @@ class MultiprocessEngine(InferenceEngine):
         pipe: WorkerPipe,
         model_config: ModelConfig,
         local_rank: int,
-        batch_max_wait: float = 0.5,
         signal_ready: bool = False,
         load_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs,
@@ -119,20 +140,9 @@ class MultiprocessEngine(InferenceEngine):
             pipe.send_response(None)
 
         while True:
-            start = time()
-            delta: float = 0.0
-
-            requests: List[InferenceRequest] = []
-            while len(engine.pending) < engine.batch_size and delta < batch_max_wait:
-                # Wait indefinitely for the first request, collect additional
-                # requests over a short window before processing.
-                wait = batch_max_wait - delta if requests else None
-                request = pipe.get_request(wait)
-                if request:
-                    requests.append(request)
-                    if not wait:
-                        start = time()
-                delta = time() - start
+            requests = pipe.get_request()
+            if not isinstance(requests, list):
+                requests = [requests]
 
             for response in engine.generate_batch_stream(requests):
                 pipe.send_response(response)
@@ -197,9 +207,13 @@ class WorkerPipe:
         self.child_conn.close()
 
     ### Main proc methods ####
-    def send_request(self, request: InferenceRequest):
-        # Send as dict to make pickling more reliable
-        self.parent_conn.send(request.to_dict())
+    def send_request(self, request: Union[InferenceRequest, List[InferenceRequest]]):
+        # Send as dict(s) to make pickling more reliable
+        if isinstance(request, list):
+            data = [req.to_dict() for req in request]
+        else:
+            data = request.to_dict()
+        self.parent_conn.send(data)
 
     def get_response(self, timeout: Optional[float] = None) -> Optional[InferenceResponse]:
         if timeout is not None and not self.parent_conn.poll(timeout):
@@ -213,21 +227,24 @@ class WorkerPipe:
 
     ### Worker methods ####
     @overload
-    def get_request(self) -> InferenceRequest:
+    def get_request(self) -> Union[InferenceRequest, List[InferenceRequest]]:
         pass
 
     @overload
-    def get_request(self, timeout: None = None) -> InferenceRequest:
+    def get_request(self, timeout: None = None) -> Union[InferenceRequest, List[InferenceRequest]]:
         pass
 
     @overload
-    def get_request(self, timeout: Optional[float] = None) -> Optional[InferenceRequest]:
+    def get_request(self, timeout: Optional[float] = None) -> Optional[Union[InferenceRequest, List[InferenceRequest]]]:
         pass
 
-    def get_request(self, timeout: Optional[float] = None) -> Optional[InferenceRequest]:
+    def get_request(self, timeout: Optional[float] = None) -> Optional[Union[InferenceRequest, List[InferenceRequest]]]:
         if timeout is not None and not self.child_conn.poll(timeout):
             return None
-        return InferenceRequest.from_dict(self.child_conn.recv())
+        data = self.child_conn.recv()
+        if isinstance(data, list):
+            return [InferenceRequest.from_dict(req) for req in data]
+        return InferenceRequest.from_dict(data)
 
     def send_response(self, response: Optional[InferenceResponse]):
         self.child_conn.send(response.to_dict() if response else None)

@@ -11,6 +11,9 @@ import torch
 from llm.inference.base import InferenceEngine
 from llm.inference.transformer import InferenceRequest, InferenceResponse, TransformersEngine
 from llm.model_configs import ModelConfig
+from llm.utils.logs import get_logger
+
+logger = get_logger()
 
 
 class MultiprocessEngine(InferenceEngine):
@@ -141,12 +144,22 @@ class MultiprocessEngine(InferenceEngine):
             pipe.send_response(None)
 
         while True:
-            requests = pipe.get_request()
-            if not isinstance(requests, list):
-                requests = [requests]
-
-            for response in engine.generate_batch_stream(requests):
-                pipe.send_response(response)
+            try:
+                requests = pipe.get_request()
+                if not isinstance(requests, list):
+                    requests = [requests]
+                for response in engine.generate_batch_stream(requests):
+                    pipe.send_response(response)
+            except EOFError:
+                # Worker closed
+                break
+            except OSError:
+                # Worker closed
+                break
+            except Exception as e:
+                logger.error(e)
+                for response in engine.clear_all("internal error"):
+                    pipe.send_response(response)
 
     def add_request(self, request: InferenceRequest) -> Queue[InferenceResponse]:
         """

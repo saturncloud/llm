@@ -428,9 +428,21 @@ class TransformersEngine(InferenceEngine):
 
         self.has_updates = False
 
+    def clear_all(self, stopped_reason: str = "cancelled") -> List[InferenceResponse]:
+        states = self.batch + self.pending
+        self.batch = []
+        self.pending = []
+        for state in states:
+            if not state.resp.stopped:
+                state.set_stopped(stopped_reason)
+        self._clear()
+        return [s.resp for s in states]
+
     def _clear(self):
         self.kv_cache.clear()
+        self.attn_cache.clear()
         self.encoder_cache.clear()
+        self.encoder_attn_cache.clear()
         gc.collect()
         torch.cuda.empty_cache()
 

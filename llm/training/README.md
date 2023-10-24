@@ -125,7 +125,7 @@ reading the section on [Prompts](../../README.md#prompts) and
 ## Fine Tuning
 
 ```
-$ python llm/training/finetune.py config.yaml
+$ python -m llm.training.finetune config.yaml
 ```
 
 The `finetune.py` script will fine tune the base model using the data generated in the previous step.

@@ -304,11 +304,11 @@ class TransformersEngine(InferenceEngine):
         """
         Decode tokens and check for stopping conditions
         """
-        if not state.resp.stopped and not state.req.stop_strings:
+        stream_interval = state.req.stream_interval
+        if not state.resp.stopped and not state.req.stop_strings and stream_interval <= 0:
             # Skip decoding tokens when not needed
             return
 
-        stream_interval = state.req.stream_interval
         if (stream_interval > 0 and state.resp.tokens_generated % stream_interval == 0) or state.resp.stopped:
             # Decode tokens, and check if an update needs to be yielded
             if state.req.echo_prompt:

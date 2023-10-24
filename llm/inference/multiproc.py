@@ -157,7 +157,7 @@ class MultiprocessEngine(InferenceEngine):
                 # Worker closed
                 break
             except Exception as e:
-                logger.error(e)
+                logger.error(e, exc_info=True)
                 for response in engine.clear_all("internal error"):
                     pipe.send_response(response)
 
@@ -193,12 +193,17 @@ class MultiprocessEngine(InferenceEngine):
             stop_strings=stop_strings,
             **kwargs,
         )
+        for resp in self.generate_response_stream(request, timeout=timeout):
+            yield resp.output
+
+    def generate_response_stream(self, request: InferenceRequest, timeout: Optional[int] = None) -> Iterable[InferenceResponse]:
         stream = self.add_request(request)
         try:
             start = time()
             while timeout is None or timeout > 0:
                 response = stream.get(timeout=timeout)
-                yield response.output
+                yield response
+
                 if response.stopped:
                     break
                 if timeout is not None:

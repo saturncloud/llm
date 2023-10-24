@@ -174,12 +174,16 @@ def fetch_peft_base(model_id: str) -> Optional[str]:
 
 
 @dataclass
-class LlamaConfig(ModelConfig):
+class LlamaBaseConfig(ModelConfig):
+    tokenizer_kwargs: Dict[str, Any] = field(default_factory=lambda: {
+        # Improves batch inference performance on inputs of different length
+        "padding_side": "left",
+    })
     default_lora_config: Dict = field(default_factory=llama_lora_config)
 
 
 @dataclass
-class VicunaConfig(LlamaConfig):
+class VicunaConfig(LlamaBaseConfig):
     model_id: str = "lmsys/vicuna-7b-v1.5"
     max_length: int = 4096
     format: PromptFormat = field(default_factory=VicunaFormat)
@@ -193,7 +197,7 @@ VicunaConfig.register(
 
 
 @dataclass
-class Llama2Config(LlamaConfig):
+class Llama2Config(LlamaBaseConfig):
     model_id: str = "meta-llama/Llama-2-7b-hf"
     max_length: int = 4096
 
@@ -206,7 +210,7 @@ Llama2Config.register(
 
 
 @dataclass
-class Llama2ChatConfig(LlamaConfig):
+class Llama2ChatConfig(LlamaBaseConfig):
     model_id: str = "meta-llama/Llama-2-7b-chat-hf"
     max_length: int = 4096
     format: PromptFormat = field(default_factory=Llama2Format)

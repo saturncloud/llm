@@ -94,11 +94,12 @@ class MultiprocessEngine(InferenceEngine):
             wait = self.max_delay - delta if requests else None
             try:
                 req = self._requests.get(timeout=wait)
-                requests.append(req)
-                if not wait:
-                    start = time()
             except Empty:
                 break
+
+            requests.append(req)
+            if not wait:
+                start = time()
             delta = time() - start
         return requests
 

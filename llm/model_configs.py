@@ -175,10 +175,6 @@ def fetch_peft_base(model_id: str) -> Optional[str]:
 
 @dataclass
 class LlamaBaseConfig(ModelConfig):
-    tokenizer_kwargs: Dict[str, Any] = field(default_factory=lambda: {
-        # Improves batch inference performance on inputs of different length
-        "padding_side": "left",
-    })
     default_lora_config: Dict = field(default_factory=llama_lora_config)
 
 
@@ -187,6 +183,10 @@ class VicunaConfig(LlamaBaseConfig):
     model_id: str = "lmsys/vicuna-7b-v1.5"
     max_length: int = 4096
     format: PromptFormat = field(default_factory=VicunaFormat)
+    tokenizer_kwargs: Dict[str, Any] = field(default_factory=lambda: {
+        # Improves batch inference performance on inputs of different length
+        "padding_side": "left",
+    })
 
 
 VicunaConfig.register(

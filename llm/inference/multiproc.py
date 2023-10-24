@@ -182,6 +182,7 @@ class MultiprocessEngine(InferenceEngine):
         echo_prompt: bool = False,
         stop_token_ids: Optional[List[int]] = None,
         stop_strings: Union[str, List[str]] = "",
+        timeout: Optional[int] = None,
         **kwargs,
     ) -> Iterable[str]:
         request = InferenceRequest(
@@ -194,11 +195,17 @@ class MultiprocessEngine(InferenceEngine):
         )
         stream = self.add_request(request)
         try:
-            while True:
-                response = stream.get()
+            start = time()
+            while timeout is None or timeout > 0:
+                response = stream.get(timeout=timeout)
                 yield response.output
                 if response.stopped:
                     break
+                if timeout is not None:
+                    delta = time() - start
+                    timeout -= delta
+        except Empty:
+            pass
         finally:
             self.cancel_request(request.uid)
 

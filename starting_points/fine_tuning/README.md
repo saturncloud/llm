@@ -41,7 +41,7 @@ as well as the documentation on [Prompts](../../README.md#prompts) and
 To run the dataprep, please execute
 
 ```bash
-$ python llm/training/dataprep.py ${LLM_ROOT}/starting_points/fine_tuning/dataprep_train.yaml
+$ python -m llm.training.dataprep ${LLM_ROOT}/starting_points/fine_tuning/dataprep_train.yaml
 ```
 
 You will have to flush out the content of `dataprep_train.yaml`. At a minimum you must fill out 
@@ -63,7 +63,7 @@ to see the rest of the parameters you can adjust.
 To run the fine tuning, please execute
 
 ```bash
-$ python llm/training/finetune.py ${LLM_ROOT}/starting_points/fine_tuning/finetune.yaml
+$ python -m llm.training.finetune ${LLM_ROOT}/starting_points/fine_tuning/finetune.yaml
 ```
 
 You will have to flush out the content of `finetune.yaml`. At a minimum you must fill out the `base_model` 

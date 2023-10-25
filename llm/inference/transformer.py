@@ -6,6 +6,7 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union
 from uuid import uuid4
 
 import torch
+from torch.types import Device
 from transformers import (
     PreTrainedModel,
     PreTrainedTokenizerBase,
@@ -44,10 +45,10 @@ class TransformersEngine(InferenceEngine):
         self.batch: List[InferenceState] = []
         self.pending: List[InferenceState] = []
         self.kv_cache = PastKVCache()
-        self.attn_cache = AttentionCache()
+        self.attn_cache = AttentionCache(device=self.model.device)
         # Used only for encoder-decoder models
         self.encoder_cache = EncoderCache()
-        self.encoder_attn_cache = AttentionCache()
+        self.encoder_attn_cache = AttentionCache(device=self.model.device)
 
         # Pad token is required
         if self.tokenizer.pad_token_id is None:
@@ -179,7 +180,7 @@ class TransformersEngine(InferenceEngine):
             max_length=max_length,
             return_attention_mask=True,
             return_tensors="pt",
-        )
+        ).to(self.model.device)
 
         # First step calculates attention of full input, and caches past key values
         logits, past_key_values, encoder_hidden_state = self.prefill(
@@ -187,8 +188,8 @@ class TransformersEngine(InferenceEngine):
         )
 
         # Update caches
-        self.kv_cache.append(past_key_values)
-        self.encoder_cache.append(encoder_hidden_state)
+        self.kv_cache.set(past_key_values)
+        self.encoder_cache.set(encoder_hidden_state)
         if self.model.config.is_encoder_decoder:
             self.encoder_attn_cache.set(padded.attention_mask)
             self.attn_cache.clear()
@@ -634,8 +635,15 @@ class EncoderCache:
 class AttentionCache:
     mask: torch.Tensor
 
-    def __init__(self, data: Optional[AttentionMask] = None):
+    def __init__(
+        self,
+        data: Optional[AttentionMask] = None,
+        device: Optional[Device] = None,
+    ):
+        if device is None and data is not None:
+            device = data.device
         self.data = data
+        self.device = device
 
     @property
     def batch_size(self) -> int:
@@ -657,7 +665,7 @@ class AttentionCache:
     def pad(self, value: int, length: int = 1, batch_size: Optional[int] = None):
         if batch_size is None:
             batch_size = self.batch_size
-        padding = torch.full((batch_size, length), value)
+        padding = torch.full((batch_size, length), value, device=self.device)
         self.append(padding, dim=1)
 
     def discard(self, indices: Iterable[int]):

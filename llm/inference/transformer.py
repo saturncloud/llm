@@ -36,14 +36,15 @@ class TransformersEngine(InferenceEngine):
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.batch_size = batch_size
+        self.has_updates: bool = False
 
         self.batch: List[InferenceState] = []
         self.pending: List[InferenceState] = []
         self.kv_cache = PastKVCache()
         self.attn_cache = AttentionCache()
+        # Used only for encoder-decoder models
         self.encoder_cache = EncoderCache()
         self.encoder_attn_cache = AttentionCache()
-        self.has_updates: bool = False
 
         # Pad token is required
         if self.tokenizer.pad_token_id is None:
@@ -225,6 +226,7 @@ class TransformersEngine(InferenceEngine):
         encoder_hidden_state: Optional[EncoderHiddenState] = None
         if self.model.config.is_encoder_decoder:
             # Encoder-Decoder models
+            # TODO: Figure out how to prepare inputs correctly for encoder-decoder
             encoder_hidden_state = self.model.encoder(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
             start_ids = torch.as_tensor(
                 [[self.model.generation_config.decoder_start_token_id]] * len(input_ids),
@@ -239,7 +241,10 @@ class TransformersEngine(InferenceEngine):
             logits = self.model.lm_head(out.last_hidden_state)
         else:
             # Decoder-only models
-            out = self.model(input_ids, attention_mask=attention_mask, use_cache=True)
+            # Preparing inputs is important to correctly assign position_ids
+            # when there are masked padding tokens
+            inputs = self.model.prepare_inputs_for_generation(input_ids, attention_mask=attention_mask, use_cache=True)
+            out = self.model(**inputs)
             logits = out.logits
         return logits, out.past_key_values, encoder_hidden_state
 
@@ -269,12 +274,15 @@ class TransformersEngine(InferenceEngine):
             logits = self.model.lm_head(out.last_hidden_state)
         else:
             # Decoder-only models
-            out = self.model(
+            # Preparing inputs is important to correctly assign position_ids
+            # when there are masked padding tokens
+            inputs = self.model.prepare_inputs_for_generation(
                 input_ids=input_tensor,
                 attention_mask=attention_mask,
                 use_cache=True,
                 past_key_values=past_key_values,
             )
+            out = self.model(**inputs)
             logits = out.logits
         return logits, out.past_key_values
 

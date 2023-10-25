@@ -13,6 +13,9 @@ from transformers import (
 from llm.inference.base import InferenceEngine
 from llm.inference.utils import DataclassBase, LogitsProcessorConfig, check_stop_str
 from llm.model_configs import ModelConfig
+from llm.utils.logs import get_logger
+
+logger = get_logger()
 
 Logits = torch.FloatTensor
 EncoderHiddenState = torch.FloatTensor
@@ -291,13 +294,21 @@ class TransformersEngine(InferenceEngine):
         Process logits and evaluate stopping conditions for all states in the batch
         """
         for i, state in enumerate(batch or self.batch):
-            token = self.process_logits(
-                logits[i],
-                state.tokens,
-                logits_config=state.logits_config,
-            )
-            state.add_token(token)
-            self.process_output(state)
+            try:
+                token = self.process_logits(
+                    logits[i],
+                    state.tokens,
+                    logits_config=state.logits_config,
+                )
+                state.add_token(token)
+                self.process_output(state)
+            except RuntimeError as e:
+                # Catch sampling errors (e.g. logits contain "NaN") early to avoid
+                # cancelling the whole batch if possible.
+                logger.error(e, exc_info=True)
+                if not state.resp.stopped:
+                    state.set_stopped("internal error")
+                    self.has_updates = True
 
     def process_logits(
         self,
@@ -444,6 +455,7 @@ class TransformersEngine(InferenceEngine):
             if not state.resp.stopped:
                 state.set_stopped(stopped_reason)
         self._clear()
+        self.has_updates = False
         return [s.resp for s in states]
 
     def _clear(self):

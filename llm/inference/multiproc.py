@@ -18,7 +18,7 @@ logger = get_logger()
 
 class MultiprocessEngine(InferenceEngine):
     """
-    Run the transformers engines in background processes with queued requests/responses
+    Run one or more TransformersEngine in background processes with queued requests/responses
 
     Enables thread-safe non-blocking inference across multiple devices
     """

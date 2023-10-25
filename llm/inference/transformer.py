@@ -26,7 +26,9 @@ AttentionMask = torch.Tensor
 
 class TransformersEngine(InferenceEngine):
     """
-    Generate a token stream from a prompt with the given transformer model
+    Batched inference on generative transformers models with per-request logit processing.
+
+    Does not handle concurrency. See MultiprocessEngine for a thread-safe wrapper.
     """
 
     def __init__(
@@ -115,7 +117,7 @@ class TransformersEngine(InferenceEngine):
         **kwargs,
     ) -> Iterable[str]:
         """
-        Single-prompt inference streaming wrapper. Not safe to use concurrently.
+        Single-prompt inference streaming wrapper.
         """
         request = InferenceRequest(
             prompt,
@@ -139,7 +141,7 @@ class TransformersEngine(InferenceEngine):
         **kwargs,
     ) -> str:
         """
-        Single-prompt inference wrapper. Not safe to use concurrently.
+        Single-prompt inference wrapper.
         """
         request = InferenceRequest(
             prompt,

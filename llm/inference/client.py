@@ -12,7 +12,7 @@ class APIClient(InferenceEngine):
     """
 
     path: str = "api/inference"
-    streaming_delimiter: bytes = b"\n\n"
+    stream_delimiter: bytes = b"\n\n"
 
     def __init__(self, base_url: str, headers: Optional[Dict[str, str]] = None):
         self.session = Session()
@@ -24,7 +24,7 @@ class APIClient(InferenceEngine):
         self,
         input: str,
         max_new_tokens: int = 256,
-        echo_prompt: bool = False,
+        echo: bool = False,
         stop_token_ids: Optional[List[int]] = None,
         stop_strings: Union[str, List[str]] = "",
         **kwargs,
@@ -32,10 +32,10 @@ class APIClient(InferenceEngine):
         return self._request(
             input=input,
             max_new_tokens=max_new_tokens,
-            echo_prompt=echo_prompt,
+            echo=echo,
             stop_token_ids=stop_token_ids,
             stop_strings=stop_strings,
-            streaming=True,
+            stream=True,
             **kwargs,
         )
 
@@ -43,7 +43,7 @@ class APIClient(InferenceEngine):
         self,
         input: str,
         max_new_tokens: int = 256,
-        echo_prompt: bool = False,
+        echo: bool = False,
         stop_token_ids: Optional[List[int]] = None,
         stop_strings: Union[str, List[str]] = "",
         **kwargs,
@@ -52,14 +52,18 @@ class APIClient(InferenceEngine):
         for t in self._request(
             input=input,
             max_new_tokens=max_new_tokens,
-            echo_prompt=echo_prompt,
+            echo=echo,
             stop_token_ids=stop_token_ids,
             stop_strings=stop_strings,
-            streaming=False,
+            stream=False,
             **kwargs,
         ):
             text = t
         return text
+
+    @property
+    def url(self) -> str:
+        return os.path.join(self.base_url, self.path.lstrip("/"))
 
     def _kwarg_mapping(self) -> Dict[str, Optional[str]]:
         return {}
@@ -75,16 +79,14 @@ class APIClient(InferenceEngine):
 
     def _request(
         self,
-        streaming: bool = True,
+        stream: bool = True,
         **kwargs,
     ) -> Iterable[str]:
-        kwargs["streaming"] = streaming
+        kwargs["stream"] = stream
         input_data = self._get_inputs(**kwargs)
-        url = os.path.join(self.base_url, self.path)
-
-        response = self.session.post(url, json=input_data, stream=streaming)
-        if streaming:
-            for line in response.iter_lines(delimiter=self.streaming_delimiter):
+        response = self.session.post(self.url, json=input_data, stream=stream)
+        if stream:
+            for line in response.iter_lines(delimiter=self.stream_delimiter):
                 if line:
                     data = self._parse_line(line)
                     if data:
@@ -119,16 +121,15 @@ class VLLMClient(APIClient):
     """
 
     path: str = "generate"
-    streaming_delimiter: bytes = b"\0"
+    stream_delimiter: bytes = b"\0"
 
     def _kwarg_mapping(self) -> Dict[str, Optional[str]]:
         return {
             "input": "prompt",
             "max_new_tokens": "max_tokens",
             "stop_strings": "stop",
-            "streaming": "stream",
             # VLLM does not support this
-            "echo_prompt": None,
+            "echo": None,
         }
 
     def _get_inputs(self, **kwargs) -> Dict[str, Any]:
@@ -142,8 +143,8 @@ class VLLMClient(APIClient):
 
     def _get_answer(self, data: Dict[str, Any], **kwargs) -> str:
         input = kwargs["input"]
-        echo_prompt = kwargs.get("echo_prompt", False)
-        if echo_prompt:
+        echo = kwargs.get("echo", False)
+        if echo:
             rfind_start = len(input)
         else:
             rfind_start = 0
@@ -151,7 +152,7 @@ class VLLMClient(APIClient):
         answer = self._trim_answer(
             input,
             data["text"][0],
-            echo_prompt=echo_prompt,
+            echo=echo,
         )
         stop_strings = kwargs.get("stop_strings")
         if stop_strings:
@@ -161,8 +162,8 @@ class VLLMClient(APIClient):
                 return answer[:stop_pos]
         return answer
 
-    def _trim_answer(self, input: str, answer: str, echo_prompt: bool = False) -> str:
-        if not echo_prompt:
+    def _trim_answer(self, input: str, answer: str, echo: bool = False) -> str:
+        if not echo:
             if answer.startswith(input):
                 return answer[len(input) :]
         return answer

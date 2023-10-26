@@ -18,7 +18,7 @@ class InferenceRequest(DataclassBase):
     max_new_tokens: int = 256
     # Number of tokens to generate before decoding for stop string checks and streaming updates
     token_interval: int = 4
-    echo_prompt: bool = False
+    echo: bool = False
     stop_strings: Union[str, List[str]] = ""
     stop_token_ids: Optional[List[int]] = None
 
@@ -57,7 +57,7 @@ class InferenceState:
 
     def __post_init__(self):
         self.resp = InferenceResponse(self.req.uid)
-        if self.req.echo_prompt:
+        if self.req.echo:
             self.tokens = list(self.input_ids)
         else:
             self.tokens = []

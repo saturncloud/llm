@@ -114,7 +114,7 @@ class TransformersEngine(InferenceEngine):
         self,
         input: str,
         max_new_tokens: int = 256,
-        echo_prompt: bool = False,
+        echo: bool = False,
         stop_token_ids: Optional[List[int]] = None,
         stop_strings: Union[str, List[str]] = "",
         token_interval: int = 2,
@@ -126,7 +126,7 @@ class TransformersEngine(InferenceEngine):
         request = InferenceRequest(
             input,
             max_new_tokens=max_new_tokens,
-            echo_prompt=echo_prompt,
+            echo=echo,
             stop_token_ids=stop_token_ids,
             stop_strings=stop_strings,
             token_interval=token_interval,
@@ -139,7 +139,7 @@ class TransformersEngine(InferenceEngine):
         self,
         input: str,
         max_new_tokens: int = 256,
-        echo_prompt: bool = False,
+        echo: bool = False,
         stop_token_ids: Optional[List[int]] = None,
         stop_strings: Union[str, List[str]] = "",
         **kwargs,
@@ -150,7 +150,7 @@ class TransformersEngine(InferenceEngine):
         request = InferenceRequest(
             input,
             max_new_tokens=max_new_tokens,
-            echo_prompt=echo_prompt,
+            echo=echo,
             stop_token_ids=stop_token_ids,
             stop_strings=stop_strings,
             **kwargs
@@ -356,7 +356,7 @@ class TransformersEngine(InferenceEngine):
 
         if (token_interval > 0 and state.resp.tokens_generated % token_interval == 0) or state.resp.stopped:
             # Decode tokens, and check if an update needs to be yielded
-            if state.req.echo_prompt:
+            if state.req.echo:
                 rfind_start = len(state.input_text)
             else:
                 rfind_start = 0

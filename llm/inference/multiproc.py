@@ -180,7 +180,7 @@ class MultiprocessEngine(InferenceEngine):
         self,
         input: str,
         max_new_tokens: int = 256,
-        echo_prompt: bool = False,
+        echo: bool = False,
         stop_token_ids: Optional[List[int]] = None,
         stop_strings: Union[str, List[str]] = "",
         timeout: Optional[int] = None,
@@ -189,7 +189,7 @@ class MultiprocessEngine(InferenceEngine):
         request = InferenceRequest(
             input,
             max_new_tokens=max_new_tokens,
-            echo_prompt=echo_prompt,
+            echo=echo,
             stop_token_ids=stop_token_ids,
             stop_strings=stop_strings,
             **kwargs,

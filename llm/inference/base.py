@@ -13,7 +13,7 @@ class InferenceEngine(ABC):
     def generate_stream(
         input: str,
         max_new_tokens: int = 256,
-        echo_prompt: bool = False,
+        echo: bool = False,
         stop_token_ids: Optional[List[int]] = None,
         stop_strings: Union[str, List[str]] = "",
         **kwargs,
@@ -27,7 +27,7 @@ class InferenceEngine(ABC):
         self,
         input: str,
         max_new_tokens: int = 256,
-        echo_prompt: bool = False,
+        echo: bool = False,
         stop_token_ids: Optional[List[int]] = None,
         stop_strings: Union[str, List[str]] = "",
         **kwargs,
@@ -36,7 +36,7 @@ class InferenceEngine(ABC):
         for _answer in self.generate_stream(
             input,
             max_new_tokens=max_new_tokens,
-            echo_prompt=echo_prompt,
+            echo=echo,
             stop_token_ids=stop_token_ids,
             stop_strings=stop_strings,
             **kwargs,

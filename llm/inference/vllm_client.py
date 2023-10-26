@@ -18,7 +18,7 @@ class VLLMClient(InferenceEngine):
 
     def generate_stream(
         self,
-        prompt: str,
+        input: str,
         max_new_tokens: int = 256,
         echo_prompt: bool = False,
         stop_token_ids: Optional[List[int]] = None,
@@ -26,7 +26,7 @@ class VLLMClient(InferenceEngine):
         **kwargs,
     ) -> Iterable[str]:
         return self._request(
-            prompt,
+            input,
             max_new_tokens=max_new_tokens,
             echo_prompt=echo_prompt,
             stop_token_ids=stop_token_ids,
@@ -37,7 +37,7 @@ class VLLMClient(InferenceEngine):
 
     def generate(
         self,
-        prompt: str,
+        input: str,
         max_new_tokens: int = 256,
         echo_prompt: bool = False,
         stop_token_ids: Optional[List[int]] = None,
@@ -46,7 +46,7 @@ class VLLMClient(InferenceEngine):
     ) -> str:
         text = ""
         for t in self._request(
-            prompt,
+            input,
             max_new_tokens=max_new_tokens,
             echo_prompt=echo_prompt,
             stop_token_ids=stop_token_ids,
@@ -59,7 +59,7 @@ class VLLMClient(InferenceEngine):
 
     def _request(
         self,
-        prompt: str,
+        input: str,
         max_new_tokens: int,
         echo_prompt: bool,
         stop_token_ids: Optional[List[int]] = None,
@@ -70,7 +70,7 @@ class VLLMClient(InferenceEngine):
         if not isinstance(stop_strings, list):
             stop_strings = [stop_strings]
         data = {
-            "prompt": prompt,
+            "prompt": input,
             "stream": stream,
             "max_tokens": max_new_tokens,
             "stop_strings": stop_strings,
@@ -84,7 +84,7 @@ class VLLMClient(InferenceEngine):
             for line in response.iter_lines(delimiter=b"\0"):
                 if line:
                     data = json.loads(line)
-                    answer = self._trim_answer(prompt, data["text"][0], echo_prompt=echo_prompt)
+                    answer = self._trim_answer(input, data["text"][0], echo_prompt=echo_prompt)
 
                     _, partial_stop = check_stop_str(answer, stop_strings)
                     if not partial_stop:
@@ -92,10 +92,10 @@ class VLLMClient(InferenceEngine):
                         yield answer
         else:
             data = response.json()
-            yield self._trim_answer(prompt, data["text"][0], echo_prompt=echo_prompt)
+            yield self._trim_answer(input, data["text"][0], echo_prompt=echo_prompt)
 
-    def _trim_answer(self, prompt: str, answer: str, echo_prompt: bool = False) -> str:
+    def _trim_answer(self, input: str, answer: str, echo_prompt: bool = False) -> str:
         if not echo_prompt:
-            if answer.startswith(prompt):
-                return answer[len(prompt) :]
+            if answer.startswith(input):
+                return answer[len(input) :]
         return answer

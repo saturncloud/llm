@@ -178,7 +178,7 @@ class MultiprocessEngine(InferenceEngine):
 
     def generate_stream(
         self,
-        prompt: str,
+        input: str,
         max_new_tokens: int = 256,
         echo_prompt: bool = False,
         stop_token_ids: Optional[List[int]] = None,
@@ -187,7 +187,7 @@ class MultiprocessEngine(InferenceEngine):
         **kwargs,
     ) -> Iterable[str]:
         request = InferenceRequest(
-            prompt,
+            input,
             max_new_tokens=max_new_tokens,
             echo_prompt=echo_prompt,
             stop_token_ids=stop_token_ids,

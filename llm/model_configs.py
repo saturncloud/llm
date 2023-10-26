@@ -29,17 +29,24 @@ logger = get_logger()
 _registry: Dict[str, Type[ModelConfig]] = {}
 
 
-def bnb_quantization() -> BitsAndBytesConfig:
+def bnb_quantization(mode: str = "4bit") -> BitsAndBytesConfig:
     """
     Create a valid BitsAndBytes quantization for the version of transformers that is installed.
     """
-    if TRANSFORMERS_VERSION >= "4.30.0":
-        # 4-bit supported after this version
-        return BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.float16,
+    if mode == "4bit":
+        if TRANSFORMERS_VERSION >= "4.30.0":
+            # 4-bit supported after this version
+            return BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.float16,
+            )
+        logger.warning(
+            f"Transformers version '{TRANSFORMERS_VERSION}' "
+            "does not support 4-bit quantization. Falling back on 8-bit."
         )
+    elif mode != "8bit":
+        raise Exception(f"Unrecognized quantization mode '{mode}'")
     return BitsAndBytesConfig(
         load_in_8bit=True,
     )

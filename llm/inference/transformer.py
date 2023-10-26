@@ -114,9 +114,9 @@ class TransformersEngine(InferenceEngine):
         self,
         input: str,
         max_new_tokens: int = 256,
-        echo_prompt: bool = False,
+        echo: bool = False,
         stop_token_ids: Optional[List[int]] = None,
-        stop_strings: Union[str, List[str]] = "",
+        stop_strings: Optional[Union[str, List[str]]] = None,
         token_interval: int = 2,
         **kwargs,
     ) -> Iterable[str]:
@@ -126,7 +126,7 @@ class TransformersEngine(InferenceEngine):
         request = InferenceRequest(
             input,
             max_new_tokens=max_new_tokens,
-            echo_prompt=echo_prompt,
+            echo=echo,
             stop_token_ids=stop_token_ids,
             stop_strings=stop_strings,
             token_interval=token_interval,
@@ -139,9 +139,9 @@ class TransformersEngine(InferenceEngine):
         self,
         input: str,
         max_new_tokens: int = 256,
-        echo_prompt: bool = False,
+        echo: bool = False,
         stop_token_ids: Optional[List[int]] = None,
-        stop_strings: Union[str, List[str]] = "",
+        stop_strings: Optional[Union[str, List[str]]] = None,
         **kwargs,
     ) -> str:
         """
@@ -150,7 +150,7 @@ class TransformersEngine(InferenceEngine):
         request = InferenceRequest(
             input,
             max_new_tokens=max_new_tokens,
-            echo_prompt=echo_prompt,
+            echo=echo,
             stop_token_ids=stop_token_ids,
             stop_strings=stop_strings,
             **kwargs
@@ -356,7 +356,7 @@ class TransformersEngine(InferenceEngine):
 
         if (token_interval > 0 and state.resp.tokens_generated % token_interval == 0) or state.resp.stopped:
             # Decode tokens, and check if an update needs to be yielded
-            if state.req.echo_prompt:
+            if state.req.echo:
                 rfind_start = len(state.input_text)
             else:
                 rfind_start = 0
@@ -369,10 +369,13 @@ class TransformersEngine(InferenceEngine):
             )
 
             # Check string stopping conditions
-            stop_pos, partial_stop = check_stop_str(output, state.req.stop_strings, rfind_start)
-            if stop_pos != -1:
-                output = output[:stop_pos]
-                state.set_stopped("stop string")
+            if state.req.stop_strings:
+                stop_pos, partial_stop = check_stop_str(output, state.req.stop_strings, rfind_start)
+                if stop_pos != -1:
+                    output = output[:stop_pos]
+                    state.set_stopped("stop string")
+            else:
+                partial_stop = False
 
             # Prevent updating output with partial stop strings
             if not partial_stop or state.resp.stopped:

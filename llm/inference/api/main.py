@@ -18,7 +18,7 @@ router = APIRouter()
 
 @dataclass
 class InferenceAPIRequest(InferenceRequest):
-    streaming: bool = False
+    stream: bool = False
 
 
 @router.post("/api/inference")
@@ -26,7 +26,7 @@ def inference_endpoint(data: InferenceAPIRequest):
     stream = engine.add_request(data)
 
     # Stream partial responses as Server Sent Events
-    if data.streaming:
+    if data.stream:
         def stream_resp():
             while True:
                 response = stream.get()
@@ -37,7 +37,7 @@ def inference_endpoint(data: InferenceAPIRequest):
             yield "data: [DONE]\n\n"
         return StreamingResponse(stream_resp(), media_type="text/event-stream")
 
-    # Non-streaming response
+    # Wait for completion before sending response
     while True:
         response = stream.get()
         if response.stopped:

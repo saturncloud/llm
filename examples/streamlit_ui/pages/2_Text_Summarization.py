@@ -64,5 +64,5 @@ if __name__ == "__main__":
             for text in engine.generate_stream(
                 prompt_str, stop_strings=prompt.stop_strings, **generation_kwargs
             ):
-                answer.write(text)
+                answer.text(text)
                 input_message.response = text

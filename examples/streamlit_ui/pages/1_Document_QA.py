@@ -156,4 +156,4 @@ if __name__ == "__main__":
         with chat_container:
             answer = chat_bubble("assistant")
             for text in qa_session.stream_answer(user_input, **generation_kwargs):
-                answer.write(text)
+                answer.text(text)

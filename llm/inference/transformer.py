@@ -116,7 +116,7 @@ class TransformersEngine(InferenceEngine):
         max_new_tokens: int = 256,
         echo: bool = False,
         stop_token_ids: Optional[List[int]] = None,
-        stop_strings: Union[str, List[str]] = "",
+        stop_strings: Optional[Union[str, List[str]]] = None,
         token_interval: int = 2,
         **kwargs,
     ) -> Iterable[str]:
@@ -141,7 +141,7 @@ class TransformersEngine(InferenceEngine):
         max_new_tokens: int = 256,
         echo: bool = False,
         stop_token_ids: Optional[List[int]] = None,
-        stop_strings: Union[str, List[str]] = "",
+        stop_strings: Optional[Union[str, List[str]]] = None,
         **kwargs,
     ) -> str:
         """
@@ -369,10 +369,13 @@ class TransformersEngine(InferenceEngine):
             )
 
             # Check string stopping conditions
-            stop_pos, partial_stop = check_stop_str(output, state.req.stop_strings, rfind_start)
-            if stop_pos != -1:
-                output = output[:stop_pos]
-                state.set_stopped("stop string")
+            if state.req.stop_strings:
+                stop_pos, partial_stop = check_stop_str(output, state.req.stop_strings, rfind_start)
+                if stop_pos != -1:
+                    output = output[:stop_pos]
+                    state.set_stopped("stop string")
+            else:
+                partial_stop = False
 
             # Prevent updating output with partial stop strings
             if not partial_stop or state.resp.stopped:

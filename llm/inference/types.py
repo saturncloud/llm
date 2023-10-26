@@ -19,7 +19,7 @@ class InferenceRequest(DataclassBase):
     # Number of tokens to generate before decoding for stop string checks and streaming updates
     token_interval: int = 4
     echo: bool = False
-    stop_strings: Union[str, List[str]] = ""
+    stop_strings: Optional[Union[str, List[str]]] = None
     stop_token_ids: Optional[List[int]] = None
 
     temperature: float = 1.0

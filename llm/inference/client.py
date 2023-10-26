@@ -26,7 +26,7 @@ class APIClient(InferenceEngine):
         max_new_tokens: int = 256,
         echo: bool = False,
         stop_token_ids: Optional[List[int]] = None,
-        stop_strings: Union[str, List[str]] = "",
+        stop_strings: Optional[Union[str, List[str]]] = None,
         **kwargs,
     ) -> Iterable[str]:
         return self._request(
@@ -45,7 +45,7 @@ class APIClient(InferenceEngine):
         max_new_tokens: int = 256,
         echo: bool = False,
         stop_token_ids: Optional[List[int]] = None,
-        stop_strings: Union[str, List[str]] = "",
+        stop_strings: Optional[Union[str, List[str]]] = None,
         **kwargs,
     ) -> str:
         text = ""

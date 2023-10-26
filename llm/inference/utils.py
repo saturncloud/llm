@@ -43,7 +43,9 @@ class LogitsProcessorConfig:
             processors.append(RepetitionPenaltyLogitsProcessor(self.repetition_penalty))
         return LogitsProcessorList(processors)
 
-    def process(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> torch.FloatTensor:
+    def process(
+        self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
+    ) -> torch.FloatTensor:
         return self._logit_processors(input_ids, scores, **kwargs)
 
 

@@ -27,6 +27,7 @@ def inference_endpoint(data: InferenceAPIRequest):
 
     # Stream partial responses as Server Sent Events
     if data.stream:
+
         def stream_resp():
             while True:
                 response = stream.get()
@@ -35,6 +36,7 @@ def inference_endpoint(data: InferenceAPIRequest):
                 if response.stopped:
                     break
             yield "data: [DONE]\n\n"
+
         return StreamingResponse(stream_resp(), media_type="text/event-stream")
 
     # Wait for completion before sending response
@@ -54,9 +56,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", type=str, default=None)
     parser.add_argument("--port", type=int, default=8000)
-    parser.add_argument(
-        "-m", "--model-id", help="Model ID", default=VicunaConfig.model_id
-    )
+    parser.add_argument("-m", "--model-id", help="Model ID", default=VicunaConfig.model_id)
     parser.add_argument(
         "-n",
         "--num-workers",
@@ -78,7 +78,7 @@ if __name__ == "__main__":
         "-p",
         "--pending",
         help="Maximum number of pending requests (does not include active)",
-        default=-1.
+        default=-1.0,
     )
     parser.add_argument(
         "-q",
@@ -96,9 +96,7 @@ if __name__ == "__main__":
         num_workers=args.num_workers,
         max_delay=args.delay,
         max_pending=args.pending,
-        load_kwargs={
-            "quantization": quantization if quantization else False
-        }
+        load_kwargs={"quantization": quantization if quantization else False},
     )
 
     app = FastAPI(lifespan=engine_lifecycle, engine=engine)

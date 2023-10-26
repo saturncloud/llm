@@ -12,6 +12,7 @@ class InferenceRequest(DataclassBase):
     """
     Input data for inference
     """
+
     input: Union[str, List[int]]
 
     uid: str = field(default_factory=lambda: uuid4().hex)
@@ -34,6 +35,7 @@ class InferenceResponse(DataclassBase):
     """
     Ouput data from inference.
     """
+
     uid: str
     output: str = ""
     stopped: bool = False
@@ -46,6 +48,7 @@ class InferenceState:
     """
     Stores information about an in-progress inference request/response
     """
+
     req: InferenceRequest
     input_text: str
     input_ids: List[int]
@@ -64,7 +67,7 @@ class InferenceState:
         self.logits_config = LogitsProcessorConfig(
             temperature=self.req.temperature,
             top_p=self.req.top_p,
-            top_k = self.req.top_k,
+            top_k=self.req.top_k,
             repetition_penalty=self.req.repetition_penalty,
             do_sampling=self.req.do_sampling,
         )
@@ -74,9 +77,7 @@ class InferenceState:
         self.resp.tokens_generated += 1
         is_stop_token = self.req.stop_token_ids and (token in self.req.stop_token_ids)
         if is_stop_token or self.resp.tokens_generated == self.req.max_new_tokens:
-            self.set_stopped(
-                "stop token" if is_stop_token else "max new tokens"
-            )
+            self.set_stopped("stop token" if is_stop_token else "max new tokens")
 
     def set_stopped(self, reason: str):
         self.resp.stopped = True

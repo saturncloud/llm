@@ -61,7 +61,9 @@ class TransformersEngine(InferenceEngine):
             self.tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = True
 
     @classmethod
-    def from_model_config(cls, model_config: ModelConfig, load_kwargs: Optional[Dict[str, Any]] = None, **kwargs) -> TransformersEngine:
+    def from_model_config(
+        cls, model_config: ModelConfig, load_kwargs: Optional[Dict[str, Any]] = None, **kwargs
+    ) -> TransformersEngine:
         model, tokenizer = model_config.load(**(load_kwargs or {}))
         kwargs.setdefault("max_length", model_config.max_length)
         return cls(model, tokenizer, **kwargs)
@@ -71,7 +73,9 @@ class TransformersEngine(InferenceEngine):
         self.pending.extend(states)
 
     @torch.inference_mode()
-    def generate_batch_stream(self, requests: List[InferenceRequest]) -> Iterable[InferenceResponse]:
+    def generate_batch_stream(
+        self, requests: List[InferenceRequest]
+    ) -> Iterable[InferenceResponse]:
         """
         Generate responses for multiple requests in batches. Responses are streamed individually
         as they recieve updates. Once a response has been marked "stopped", it will no longer be
@@ -130,7 +134,7 @@ class TransformersEngine(InferenceEngine):
             stop_token_ids=stop_token_ids,
             stop_strings=stop_strings,
             token_interval=token_interval,
-            **kwargs
+            **kwargs,
         )
         for response in self.generate_batch_stream([request]):
             yield response.output
@@ -153,7 +157,7 @@ class TransformersEngine(InferenceEngine):
             echo=echo,
             stop_token_ids=stop_token_ids,
             stop_strings=stop_strings,
-            **kwargs
+            **kwargs,
         )
         return self.generate_batch([request])[0].output
 
@@ -226,9 +230,7 @@ class TransformersEngine(InferenceEngine):
 
     def prefill(
         self, input_ids: torch.Tensor, attention_mask: Optional[AttentionMask] = None
-    ) -> Tuple[
-        Logits, PastKeyValues, Optional[EncoderHiddenState]
-    ]:
+    ) -> Tuple[Logits, PastKeyValues, Optional[EncoderHiddenState]]:
         """
         First pass through the model. Attention is calculated for the entire input.
         In subsequent steps, attention is only calculated for new tokens.
@@ -237,7 +239,9 @@ class TransformersEngine(InferenceEngine):
         if self.model.config.is_encoder_decoder:
             # Encoder-Decoder models
             # TODO: Figure out how to prepare inputs correctly for encoder-decoder
-            encoder_hidden_state = self.model.encoder(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
+            encoder_hidden_state = self.model.encoder(
+                input_ids=input_ids, attention_mask=attention_mask
+            ).last_hidden_state
             start_ids = torch.as_tensor(
                 [[self.model.generation_config.decoder_start_token_id]] * len(input_ids),
                 dtype=torch.int64,
@@ -253,7 +257,9 @@ class TransformersEngine(InferenceEngine):
             # Decoder-only models
             # Preparing inputs is important to correctly assign position_ids
             # when there are masked padding tokens
-            inputs = self.model.prepare_inputs_for_generation(input_ids, attention_mask=attention_mask, use_cache=True)
+            inputs = self.model.prepare_inputs_for_generation(
+                input_ids, attention_mask=attention_mask, use_cache=True
+            )
             out = self.model(**inputs)
             logits = out.logits
         return logits, out.past_key_values, encoder_hidden_state
@@ -354,7 +360,9 @@ class TransformersEngine(InferenceEngine):
             # Skip decoding tokens when not needed
             return
 
-        if (token_interval > 0 and state.resp.tokens_generated % token_interval == 0) or state.resp.stopped:
+        if (
+            token_interval > 0 and state.resp.tokens_generated % token_interval == 0
+        ) or state.resp.stopped:
             # Decode tokens, and check if an update needs to be yielded
             if state.req.echo:
                 rfind_start = len(state.input_text)
@@ -513,10 +521,7 @@ class PastKVCache:
         to_keep = [i for i in range(self.batch_size) if i not in indices]
 
         if len(to_keep) > 0:
-            self.data = tuple(
-                (keys[to_keep], vals[to_keep])
-                for keys, vals in self.data
-            )
+            self.data = tuple((keys[to_keep], vals[to_keep]) for keys, vals in self.data)
         else:
             self.clear()
 

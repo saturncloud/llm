@@ -102,7 +102,7 @@ class APIClient(InferenceEngine):
     def _parse_line(self, line: bytes) -> Optional[Dict[str, Any]]:
         # Simplified SSE parsing with JSON data
         if line.startswith(b"data:"):
-            line = line[len(b"data:"):]
+            line = line[len(b"data:") :]
         if line.startswith(b" "):
             line = line[1:]
         if line.endswith(b"\n\n"):

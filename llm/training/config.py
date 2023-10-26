@@ -30,7 +30,8 @@ from llm.prompt import (
     TogetherLlama2Format,
     ChatMLFormat,
     DollyFormat,
-    PromptFormat, DefaultPrompt,
+    PromptFormat,
+    DefaultPrompt,
 )
 from llm.qa.prompts import ZeroShotQA, FewShotQA, StandaloneQuestion
 
@@ -46,7 +47,7 @@ experiment_tracking_methods = {}
 
 def load_method(registry: Dict[str, Callable], name: str) -> Callable:
     if "::" in name:
-        module_str, ref = name.split('::')
+        module_str, ref = name.split("::")
         module = importlib.import_module(module_str)
         return getattr(module, ref)
     return registry[name]

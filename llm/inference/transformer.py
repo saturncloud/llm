@@ -55,6 +55,11 @@ class TransformersEngine(InferenceEngine):
         if self.tokenizer.pad_token_id is None:
             self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
 
+        if hasattr(self.tokenizer, "deprecation_warnings"):
+            # Ignore deprecation warnings about padding. Splitting up tokenization from padding
+            # allows requests to be made pre-tokenized.
+            self.tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = True
+
     @classmethod
     def from_model_config(cls, model_config: ModelConfig, load_kwargs: Optional[Dict[str, Any]] = None, **kwargs) -> TransformersEngine:
         model, tokenizer = model_config.load(**(load_kwargs or {}))
@@ -150,7 +155,7 @@ class TransformersEngine(InferenceEngine):
             stop_strings=stop_strings,
             **kwargs
         )
-        return self.generate_batch([request])[0]
+        return self.generate_batch([request])[0].output
 
     def add_requests(self, requests: List[InferenceRequest]):
         states = self.process_inputs(requests)

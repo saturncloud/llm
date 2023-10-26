@@ -24,7 +24,13 @@ class MultiprocessEngine(InferenceEngine):
     Enables thread-safe non-blocking inference across multiple devices
     """
 
-    def __init__(self, workers: List[WorkerPipe], batch_size: int = 8, max_delay: float = 0.5, max_pending: int = -1):
+    def __init__(
+        self,
+        workers: List[WorkerPipe],
+        batch_size: int = 8,
+        max_delay: float = 0.5,
+        max_pending: int = -1,
+    ):
         self._workers = workers
         self._closed = False
         self.batch_size = batch_size
@@ -197,7 +203,9 @@ class MultiprocessEngine(InferenceEngine):
         for resp in self.generate_response_stream(request, timeout=timeout):
             yield resp.output
 
-    def generate_response_stream(self, request: InferenceRequest, timeout: Optional[int] = None) -> Iterable[InferenceResponse]:
+    def generate_response_stream(
+        self, request: InferenceRequest, timeout: Optional[int] = None
+    ) -> Iterable[InferenceResponse]:
         stream = self.add_request(request)
         try:
             start = time()
@@ -262,10 +270,14 @@ class WorkerPipe:
         pass
 
     @overload
-    def get_request(self, timeout: Optional[float] = None) -> Optional[Union[InferenceRequest, List[InferenceRequest]]]:
+    def get_request(
+        self, timeout: Optional[float] = None
+    ) -> Optional[Union[InferenceRequest, List[InferenceRequest]]]:
         pass
 
-    def get_request(self, timeout: Optional[float] = None) -> Optional[Union[InferenceRequest, List[InferenceRequest]]]:
+    def get_request(
+        self, timeout: Optional[float] = None
+    ) -> Optional[Union[InferenceRequest, List[InferenceRequest]]]:
         if timeout is not None and not self.child_conn.poll(timeout):
             return None
         data = self.child_conn.recv()

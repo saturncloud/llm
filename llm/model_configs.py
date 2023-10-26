@@ -224,11 +224,13 @@ class Llama2ChatConfig(LlamaBaseConfig):
     model_id: str = "meta-llama/Llama-2-7b-chat-hf"
     max_length: int = 4096
     format: PromptFormat = field(default_factory=Llama2Format)
-    tokenizer_kwargs: Dict[str, Any] = field(default_factory=lambda: {
-        # Llama2 does not have a pad token. For batched inference, using the unk_token
-        # performs better than the standard recommendation of using eos_token
-        "pad_token": "<unk>",
-    })
+    tokenizer_kwargs: Dict[str, Any] = field(
+        default_factory=lambda: {
+            # Llama2 does not have a pad token. For batched inference, using the unk_token
+            # performs better than the standard recommendation of using eos_token
+            "pad_token": "<unk>",
+        }
+    )
 
 
 Llama2ChatConfig.register(

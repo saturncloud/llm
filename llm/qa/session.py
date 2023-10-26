@@ -7,7 +7,7 @@ from langchain.vectorstores.base import VectorStore
 import torch
 
 from llm.inference import TransformersEngine, InferenceEngine
-from llm.model_configs import ModelConfig, bnb_quantization
+from llm.model_configs import ModelConfig
 from llm.prompt import Message, Prompt, Conversation
 from llm.qa.prompts import FewShotQA, StandaloneQuestion
 
@@ -53,7 +53,7 @@ class QASession:
                 load_kwargs={
                     "device_map": "auto",
                     "torch_dtype": torch.float16,
-                    "quantization_config": bnb_quantization(),
+                    "quantization": True,
                 },
             )
         if isinstance(qa_prompt, type):

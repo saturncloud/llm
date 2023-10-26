@@ -9,7 +9,7 @@ import uvicorn
 
 from llm.inference.multiproc import MultiprocessEngine
 from llm.inference.types import InferenceRequest
-from llm.model_configs import ModelConfig, VicunaConfig, bnb_quantization
+from llm.model_configs import ModelConfig, VicunaConfig
 
 
 engine: MultiprocessEngine
@@ -83,13 +83,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "-q",
         "--quantization",
-        default="4bit",
-        choices=("4bit", "8bit", "none"),
+        choices=("4bit", "8bit"),
         help="Quantize the model during load with bitsandbytes",
     )
     args = parser.parse_args()
 
-    quantization = args.quantization.lower()
+    quantization = args.quantization.lower() if args.quantization else None
     config = ModelConfig.from_registry(args.model_id)
     engine = MultiprocessEngine.from_model_config(
         config,
@@ -98,9 +97,7 @@ if __name__ == "__main__":
         max_delay=args.delay,
         max_pending=args.pending,
         load_kwargs={
-            "quantization_config": (
-                bnb_quantization(quantization) if quantization != "none" else None
-            )
+            "quantization": quantization if quantization else False
         }
     )
 

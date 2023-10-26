@@ -46,7 +46,7 @@ def bnb_quantization(mode: str = "4bit") -> BitsAndBytesConfig:
             "does not support 4-bit quantization. Falling back on 8-bit."
         )
     elif mode != "8bit":
-        raise Exception(f"Unrecognized quantization mode '{mode}'")
+        raise Exception(f"Unrecognized quantization mode '{mode}'. Supports '8bit' or '4bit'")
     return BitsAndBytesConfig(
         load_in_8bit=True,
     )
@@ -113,22 +113,29 @@ class ModelConfig:
     def load(
         self,
         device_map: Optional[Union[str, Dict]] = None,
+        quantization: Union[str, bool] = False,
         tokenizer_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
         tokenizer_kwargs = tokenizer_kwargs or {}
         if device_map is not None:
             kwargs["device_map"] = device_map
-        model = self.load_model(**kwargs)
+        model = self.load_model(quantization=quantization, **kwargs)
         tokenizer = self.load_tokenizer(**tokenizer_kwargs)
         return model, tokenizer
 
-    def load_model(self, **kwargs) -> PreTrainedModel:
+    def load_model(self, quantization: Union[str, bool] = False, **kwargs) -> PreTrainedModel:
         model_cls = self.model_cls or AutoModelForCausalLM
         model_kwargs = {
             **self.model_kwargs,
             **kwargs,
         }
+        if quantization:
+            if quantization is True:
+                quantization_config = bnb_quantization()
+            else:
+                quantization_config = bnb_quantization(quantization)
+            model_kwargs["quantization_config"] = quantization_config
         return model_cls.from_pretrained(self.model_id, **model_kwargs)
 
     def load_tokenizer(self, **kwargs) -> PreTrainedTokenizerBase:

@@ -6,7 +6,7 @@ from typing import Iterable, List, Optional, Union
 
 class InferenceEngine(ABC):
     """
-    Interface for prompt completion
+    Interface for string prompt completion
     """
 
     @abstractmethod
@@ -19,7 +19,7 @@ class InferenceEngine(ABC):
         **kwargs,
     ) -> Iterable[str]:
         """
-        Stream generated text as each new token is added
+        Stream generated text as new tokens are added
         """
         raise NotImplementedError()
 

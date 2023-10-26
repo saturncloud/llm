@@ -30,12 +30,17 @@ The General workflow for fine tuning LLMS with the Saturn Cloud LLM Framework is
    data actually used in training, input_ids, labels and the attention_mask
 3. You run the finetune.py script to fine tune the model.
 
+> [!NOTE]
+> The commands in this file use the `$LLM_ROOT` environment variable which should
+> point to the location where you have checked out this repository. You must also
+> ensure that `$LLM_ROOT` is on your `$PYTHONPATH`
+
 ## Datset preparation
 
 The following command will run the data preparation steps.
 
 ```bash
-$ python llm/training/dataprep.py examples/fine_tuning_samsum/dataprep_train.yaml
+$ python -m llm.training.dataprep ${LLM_ROOT}/examples/fine_tuning_samsum/dataprep_train.yaml
 ```
 which will use the following configuration:
 
@@ -105,7 +110,7 @@ are saved to `/tmp/samsum-train`
 
 The following command will run the fine tuning script.
 ```
-$ python llm/training/finetune.py examples/fine_tuning_samsum/finetune.yaml
+$ python -m llm.training.finetune ${LLM_ROOT}/examples/fine_tuning_samsum/finetune.yaml
 ```
 
 Please see the 
@@ -144,7 +149,7 @@ The following script will loads the base model (llama2) and pass the input from 
 into it. 
 
 ```bash
-$ python examples/fine_tuning_samsum/baseline.py
+$ python ${LLM_ROOT}/examples/fine_tuning_samsum/baseline.py
 ```
 
 As expected, it performs poorly. For the given prompt:
@@ -195,7 +200,7 @@ A: Oh, yes, I took him there last Monday. He showed me one that
 
 The following does the same, except with the fine tuned model
 ```bash
-$ python examples/fine_tuning_samsum/eval_model.py 
+$ python ${LLM_ROOT}/examples/fine_tuning_samsum/eval_model.py 
 ```
 
 The only change is the addition of the following line:

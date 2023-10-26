@@ -29,17 +29,24 @@ logger = get_logger()
 _registry: Dict[str, Type[ModelConfig]] = {}
 
 
-def bnb_quantization() -> BitsAndBytesConfig:
+def bnb_quantization(mode: str = "4bit") -> BitsAndBytesConfig:
     """
     Create a valid BitsAndBytes quantization for the version of transformers that is installed.
     """
-    if TRANSFORMERS_VERSION >= "4.30.0":
-        # 4-bit supported after this version
-        return BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.float16,
+    if mode == "4bit":
+        if TRANSFORMERS_VERSION >= "4.30.0":
+            # 4-bit supported after this version
+            return BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.float16,
+            )
+        logger.warning(
+            f"Transformers version '{TRANSFORMERS_VERSION}' "
+            "does not support 4-bit quantization. Falling back on 8-bit."
         )
+    elif mode != "8bit":
+        raise Exception(f"Unrecognized quantization mode '{mode}'")
     return BitsAndBytesConfig(
         load_in_8bit=True,
     )
@@ -174,12 +181,12 @@ def fetch_peft_base(model_id: str) -> Optional[str]:
 
 
 @dataclass
-class LlamaConfig(ModelConfig):
+class LlamaBaseConfig(ModelConfig):
     default_lora_config: Dict = field(default_factory=llama_lora_config)
 
 
 @dataclass
-class VicunaConfig(LlamaConfig):
+class VicunaConfig(LlamaBaseConfig):
     model_id: str = "lmsys/vicuna-7b-v1.5"
     max_length: int = 4096
     format: PromptFormat = field(default_factory=VicunaFormat)
@@ -193,7 +200,7 @@ VicunaConfig.register(
 
 
 @dataclass
-class Llama2Config(LlamaConfig):
+class Llama2Config(LlamaBaseConfig):
     model_id: str = "meta-llama/Llama-2-7b-hf"
     max_length: int = 4096
 
@@ -206,10 +213,15 @@ Llama2Config.register(
 
 
 @dataclass
-class Llama2ChatConfig(LlamaConfig):
+class Llama2ChatConfig(LlamaBaseConfig):
     model_id: str = "meta-llama/Llama-2-7b-chat-hf"
     max_length: int = 4096
     format: PromptFormat = field(default_factory=Llama2Format)
+    tokenizer_kwargs: Dict[str, Any] = field(default_factory=lambda: {
+        # Llama2 does not have a pad token. For batched inference, using the unk_token
+        # performs better than the standard recommendation of using eos_token
+        "pad_token": "<unk>",
+    })
 
 
 Llama2ChatConfig.register(

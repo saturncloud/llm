@@ -1,7 +1,14 @@
 # Fine Tuning
 
-Here you can stub out the fine-tuning workflow on your own dataset. If you would like to run
-through [our example using the Samsum dataset, see this README](../../examples/fine_tuning_samsum/README.md)
+This starting point is designed to help you run the LLM fine-tuning workflow on your own dataset.  We have stubbed
+out all the boilerplate, and you are responsible for connecting this code to your data. If you are new to fine-tuning
+LLMs it might be beneficial to run through our 
+[example which fine tunes Llama2 to learn how to summarize conversations.](../../examples/fine_tuning_samsum/README.md)
+
+> [!NOTE]
+> The commands in this file use the `$LLM_ROOT` environment variable which should
+> point to the location where you have checked out this repository. You must also
+> ensure that `$LLM_ROOT` is on your `$PYTHONPATH`
 
 ## General Workflow
 
@@ -34,7 +41,7 @@ as well as the documentation on [Prompts](../../README.md#prompts) and
 To run the dataprep, please execute
 
 ```bash
-$ python llm/training/dataprep.py starting_points/fine_tuning/dataprep_train.yaml
+$ python -m llm.training.dataprep ${LLM_ROOT}/starting_points/fine_tuning/dataprep_train.yaml
 ```
 
 You will have to flush out the content of `dataprep_train.yaml`. At a minimum you must fill out 
@@ -56,7 +63,7 @@ to see the rest of the parameters you can adjust.
 To run the fine tuning, please execute
 
 ```bash
-$ python llm/training/finetune.py starting_points/fine_tuning/finetune.yaml
+$ python -m llm.training.finetune ${LLM_ROOT}/starting_points/fine_tuning/finetune.yaml
 ```
 
 You will have to flush out the content of `finetune.yaml`. At a minimum you must fill out the `base_model` 

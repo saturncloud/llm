@@ -138,7 +138,16 @@ def generation_settings():
     keys get cleared from session_state.
     """
     max_new_tokens = st.number_input(
-        label="Max New Tokens", min_value=1, value=st.session_state.get("max_new_tokens", 256)
+        label="Max New Tokens",
+        min_value=1,
+        value=st.session_state.get("max_new_tokens", 256),
+        help="Maximum number of new tokens to generate",
+    )
+    token_interval = st.number_input(
+        label="Token Interval",
+        min_value=-1,
+        value=st.session_state.get("token_interval", 2),
+        help="Token decoding and streaming interval.",
     )
     temperature = st.slider(
         label="Temperature",
@@ -158,7 +167,13 @@ def generation_settings():
     st.session_state.max_new_tokens = max_new_tokens
     st.session_state.temperature = temperature
     st.session_state.top_p = top_p
-    return {"max_new_tokens": max_new_tokens, "temperature": temperature, "top_p": top_p}
+    st.session_state.token_interval = token_interval
+    return {
+        "max_new_tokens": max_new_tokens,
+        "temperature": temperature,
+        "top_p": top_p,
+        "token_interval": token_interval,
+    }
 
 
 def saturn_headers(url: str) -> Dict[str, str]:

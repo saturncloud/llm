@@ -1,35 +1,48 @@
 from __future__ import annotations
 
-from queue import Queue
+from queue import Empty, Queue
 from multiprocessing import Pipe, Process, set_start_method
-from typing import Any, Dict, Iterable, List, Optional, Union
+from threading import Lock, Thread
+from time import time
+from typing import Any, Dict, Iterable, List, Optional, Union, overload
 
 import torch
 
 from llm.inference.base import InferenceEngine
 from llm.inference.transformer import TransformersEngine
+from llm.inference.types import InferenceRequest, InferenceResponse
 from llm.model_configs import ModelConfig
+from llm.utils.logs import get_logger
+
+logger = get_logger()
 
 
 class MultiprocessEngine(InferenceEngine):
     """
-    Run inference engines in background processes with queued requests/responses
+    Run one or more TransformersEngine in background processes with queued requests/responses
 
     Enables thread-safe non-blocking inference across multiple devices
     """
 
-    def __init__(self, workers: List[WorkerPipe]):
-        self.workers = workers
-        self.closed = False
-        self.queue: Queue[WorkerPipe] = Queue(len(self.workers))
-        for worker in self.workers:
-            self.queue.put(worker)
+    def __init__(self, workers: List[WorkerPipe], batch_size: int = 8, max_delay: float = 0.5, max_pending: int = -1):
+        self._workers = workers
+        self._closed = False
+        self.batch_size = batch_size
+        self.max_delay = max_delay
+        self._requests: Queue[InferenceRequest] = Queue(max_pending)
+        self._active_streams: Dict[str, Queue[InferenceResponse]] = {}
+        self._streams_lock = Lock()
+
+        for worker in self._workers:
+            Thread(None, self._response_manager, args=[worker], daemon=True).start()
+        Thread(None, self._requests_manager, daemon=True).start()
 
     @classmethod
     def from_model_config(
         cls,
         model_config: ModelConfig,
         num_workers: Optional[int] = None,
+        batch_size: int = 8,
         wait: bool = True,
         load_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs,
@@ -48,7 +61,7 @@ class MultiprocessEngine(InferenceEngine):
                 None,
                 cls._transformers_worker,
                 args=[worker, model_config, i],
-                kwargs={"signal_ready": wait, "load_kwargs": load_kwargs, **kwargs},
+                kwargs={"signal_ready": wait, "load_kwargs": load_kwargs, "batch_size": batch_size},
                 daemon=True,
             )
             watch_proc.start()
@@ -59,7 +72,60 @@ class MultiprocessEngine(InferenceEngine):
                 # Collect initial sentinel values indicating the workers have loaded
                 worker.get_response()
 
-        return cls(workers)
+        return cls(workers, batch_size=batch_size, **kwargs)
+
+    def _requests_manager(self):
+        """
+        Watches for requests, and schedules them to workers
+        """
+        next_worker = 0
+        while True:
+            batch = self._collect_batch()
+            try:
+                self._workers[next_worker].send_request(batch)
+            except OSError:
+                # Workers closed
+                break
+            next_worker = (next_worker + 1) % len(self._workers)
+
+    def _collect_batch(self) -> List[InferenceRequest]:
+        requests: List[InferenceRequest] = []
+        delta = 0.0
+        start = time()
+        while len(requests) < self.batch_size and delta < self.max_delay:
+            # Wait indefinitely for the first request, collect additional
+            # requests over a short window before sending to be processed.
+            wait = self.max_delay - delta if requests else None
+            try:
+                req = self._requests.get(timeout=wait)
+            except Empty:
+                break
+
+            requests.append(req)
+            if not wait:
+                start = time()
+            delta = time() - start
+        return requests
+
+    def _response_manager(self, worker: WorkerPipe):
+        """
+        Watches for responses from a worker, and sends
+        them to the associated output stream
+        """
+        while True:
+            try:
+                response = worker.get_response()
+            except EOFError:
+                # Worker closed
+                break
+
+            if response:
+                uid = response.uid
+                stream = self._active_streams.get(uid)
+                if stream:
+                    if response.stopped:
+                        self.cancel_request(uid)
+                    stream.put(response)
 
     @staticmethod
     def _transformers_worker(
@@ -77,13 +143,38 @@ class MultiprocessEngine(InferenceEngine):
         )
         if signal_ready:
             pipe.send_response(None)
-        while True:
-            request = pipe.get_request()
-            for text in engine.generate_stream(request.prompt, **request.kwargs):
-                pipe.send_response(text)
 
-            # None indicates to the requester that the stream is completed
-            pipe.send_response(None)
+        while True:
+            try:
+                requests = pipe.get_request()
+                if not isinstance(requests, list):
+                    requests = [requests]
+                for response in engine.generate_batch_stream(requests):
+                    pipe.send_response(response)
+            except EOFError:
+                # Worker closed
+                break
+            except OSError:
+                # Worker closed
+                break
+            except Exception as e:
+                logger.error(e, exc_info=True)
+                for response in engine.clear_all("internal error"):
+                    pipe.send_response(response)
+
+    def add_request(self, request: InferenceRequest) -> Queue[InferenceResponse]:
+        """
+        Add a request to the queue, and return a response queue
+        """
+        queue: Queue[InferenceResponse] = Queue(-1)
+        with self._streams_lock:
+            self._active_streams[request.uid] = queue
+        self._requests.put(request)
+        return queue
+
+    def cancel_request(self, uid: str):
+        with self._streams_lock:
+            self._active_streams.pop(uid, None)
 
     def generate_stream(
         self,
@@ -92,9 +183,10 @@ class MultiprocessEngine(InferenceEngine):
         echo_prompt: bool = False,
         stop_token_ids: Optional[List[int]] = None,
         stop_strings: Union[str, List[str]] = "",
+        timeout: Optional[int] = None,
         **kwargs,
     ) -> Iterable[str]:
-        request = StreamRequest(
+        request = InferenceRequest(
             prompt,
             max_new_tokens=max_new_tokens,
             echo_prompt=echo_prompt,
@@ -102,51 +194,31 @@ class MultiprocessEngine(InferenceEngine):
             stop_strings=stop_strings,
             **kwargs,
         )
-        # Wait for a worker to be available
-        worker = self.queue.get()
-        try:
-            # Clear any leftover responses from a previous query
-            worker.clear_responses()
-            worker.send_request(request)
-            while True:
-                # Yield results until sentinel value is recieved
-                text = worker.get_response()
-                if text is not None:
-                    yield text
-                else:
-                    # Stream completed
-                    break
+        for resp in self.generate_response_stream(request, timeout=timeout):
+            yield resp.output
 
-            self.queue.task_done()
+    def generate_response_stream(self, request: InferenceRequest, timeout: Optional[int] = None) -> Iterable[InferenceResponse]:
+        stream = self.add_request(request)
+        try:
+            start = time()
+            while timeout is None or timeout > 0:
+                response = stream.get(timeout=timeout)
+                yield response
+
+                if response.stopped:
+                    break
+                if timeout is not None:
+                    delta = time() - start
+                    timeout -= delta
+        except Empty:
+            pass
         finally:
-            if not self.closed:
-                # Add pipe back to queue to process new requests
-                self.queue.put(worker)
+            self.cancel_request(request.uid)
 
     def close(self):
-        self.closed = True
-        for pipe in self.workers:
+        self._closed = True
+        for pipe in self._workers:
             pipe.close()
-
-
-class StreamRequest:
-    """
-    Wraps an inference request to be processed by a worker
-    """
-
-    def __init__(self, prompt: str, **kwargs) -> None:
-        self.prompt = prompt
-        self.kwargs = kwargs
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "prompt": self.prompt,
-            **self.kwargs,
-        }
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> StreamRequest:
-        return cls(**data)
 
 
 class WorkerPipe:
@@ -162,20 +234,44 @@ class WorkerPipe:
         self.child_conn.close()
 
     ### Main proc methods ####
-    def send_request(self, request: StreamRequest):
-        # Send as dict to make pickling more reliable
-        self.parent_conn.send(request.to_dict())
+    def send_request(self, request: Union[InferenceRequest, List[InferenceRequest]]):
+        # Send as dict(s) to make pickling more reliable
+        if isinstance(request, list):
+            data = [req.to_dict() for req in request]
+        else:
+            data = request.to_dict()
+        self.parent_conn.send(data)
 
-    def get_response(self) -> Optional[str]:
-        return self.parent_conn.recv()
+    def get_response(self, timeout: Optional[float] = None) -> Optional[InferenceResponse]:
+        if timeout is not None and not self.parent_conn.poll(timeout):
+            return None
+        response = self.parent_conn.recv()
+        return InferenceResponse.from_dict(response) if response else None
 
     def clear_responses(self):
         while self.parent_conn.poll():
             self.parent_conn.recv_bytes()
 
     ### Worker methods ####
-    def get_request(self) -> StreamRequest:
-        return StreamRequest.from_dict(self.child_conn.recv())
+    @overload
+    def get_request(self) -> Union[InferenceRequest, List[InferenceRequest]]:
+        pass
 
-    def send_response(self, response: Optional[str]):
-        self.child_conn.send(response)
+    @overload
+    def get_request(self, timeout: None = None) -> Union[InferenceRequest, List[InferenceRequest]]:
+        pass
+
+    @overload
+    def get_request(self, timeout: Optional[float] = None) -> Optional[Union[InferenceRequest, List[InferenceRequest]]]:
+        pass
+
+    def get_request(self, timeout: Optional[float] = None) -> Optional[Union[InferenceRequest, List[InferenceRequest]]]:
+        if timeout is not None and not self.child_conn.poll(timeout):
+            return None
+        data = self.child_conn.recv()
+        if isinstance(data, list):
+            return [InferenceRequest.from_dict(req) for req in data]
+        return InferenceRequest.from_dict(data)
+
+    def send_response(self, response: Optional[InferenceResponse]):
+        self.child_conn.send(response.to_dict() if response else None)

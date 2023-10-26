@@ -1,11 +1,13 @@
 import logging
-from typing import Optional
 
 from llm import settings
 
 
 def get_logger(name: str = "saturn-llm") -> logging.Logger:
     logger = logging.getLogger(name)
+    if logger.hasHandlers():
+        return logger
+
     logger.setLevel(settings.LOG_LEVEL)
 
     handler = logging.StreamHandler()

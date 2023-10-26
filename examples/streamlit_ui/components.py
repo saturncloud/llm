@@ -6,7 +6,7 @@ import streamlit as st
 import torch
 
 from llm.inference import InferenceEngine, MultiprocessEngine, VLLMClient
-from llm.model_configs import ModelConfig, VicunaConfig, bnb_quantization
+from llm.model_configs import ModelConfig, VicunaConfig
 from llm.qa.embedding import DEFAULT_EMBEDDING_MODEL
 
 DEFAULT_MODEL_ID = os.getenv("DEFAULT_MODEL_ID", VicunaConfig.model_id)
@@ -121,7 +121,7 @@ def get_transformers_engine(
         num_workers=num_workers,
         load_kwargs={
             "torch_dtype": torch.float16,
-            "quantization_config": bnb_quantization(),
+            "quantization": True,
         },
     )
 

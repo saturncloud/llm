@@ -12,7 +12,7 @@ class InferenceRequest(DataclassBase):
     """
     Input data for inference
     """
-    prompt: Union[str, List[int]]
+    input: Union[str, List[int]]
 
     uid: str = field(default_factory=lambda: uuid4().hex)
     max_new_tokens: int = 256
@@ -47,7 +47,7 @@ class InferenceState:
     Stores information about an in-progress inference request/response
     """
     req: InferenceRequest
-    prompt: str
+    input_text: str
     input_ids: List[int]
     output_updated: bool = False
 

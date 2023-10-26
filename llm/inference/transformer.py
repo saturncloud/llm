@@ -112,7 +112,7 @@ class TransformersEngine(InferenceEngine):
 
     def generate_stream(
         self,
-        prompt: str,
+        input: str,
         max_new_tokens: int = 256,
         echo_prompt: bool = False,
         stop_token_ids: Optional[List[int]] = None,
@@ -124,7 +124,7 @@ class TransformersEngine(InferenceEngine):
         Single-prompt inference streaming wrapper.
         """
         request = InferenceRequest(
-            prompt,
+            input,
             max_new_tokens=max_new_tokens,
             echo_prompt=echo_prompt,
             stop_token_ids=stop_token_ids,
@@ -137,7 +137,7 @@ class TransformersEngine(InferenceEngine):
 
     def generate(
         self,
-        prompt: str,
+        input: str,
         max_new_tokens: int = 256,
         echo_prompt: bool = False,
         stop_token_ids: Optional[List[int]] = None,
@@ -148,7 +148,7 @@ class TransformersEngine(InferenceEngine):
         Single-prompt inference wrapper.
         """
         request = InferenceRequest(
-            prompt,
+            input,
             max_new_tokens=max_new_tokens,
             echo_prompt=echo_prompt,
             stop_token_ids=stop_token_ids,
@@ -357,7 +357,7 @@ class TransformersEngine(InferenceEngine):
         if (token_interval > 0 and state.resp.tokens_generated % token_interval == 0) or state.resp.stopped:
             # Decode tokens, and check if an update needs to be yielded
             if state.req.echo_prompt:
-                rfind_start = len(state.prompt)
+                rfind_start = len(state.input_text)
             else:
                 rfind_start = 0
 
@@ -392,13 +392,13 @@ class TransformersEngine(InferenceEngine):
             if req.stop_token_ids is None:
                 if self.tokenizer.eos_token_id is not None:
                     req.stop_token_ids = [self.tokenizer.eos_token_id]
-            if isinstance(req.prompt, str):
-                to_tokenize.append((i, req.prompt))
-                prompts[i] = req.prompt
+            if isinstance(req.input, str):
+                to_tokenize.append((i, req.input))
+                prompts[i] = req.input
             else:
-                input_ids[i] = req.prompt
+                input_ids[i] = req.input
                 prompts[i] = self.tokenizer.decode(
-                    req.prompt,
+                    req.input,
                     skip_special_tokens=True,
                     spaces_between_special_tokens=False,
                     clean_up_tokenization_spaces=True,

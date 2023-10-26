@@ -1,5 +1,5 @@
 from __future__ import annotations
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -77,13 +77,3 @@ def check_stop_str(
                     break
 
     return stop_pos, partial_stop
-
-
-@dataclass
-class DataclassBase:
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]):
-        return cls(**data)
-
-    def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)

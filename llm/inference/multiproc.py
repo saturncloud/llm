@@ -9,7 +9,8 @@ from typing import Any, Dict, Iterable, List, Optional, Union, overload
 import torch
 
 from llm.inference.base import InferenceEngine
-from llm.inference.transformer import InferenceRequest, InferenceResponse, TransformersEngine
+from llm.inference.transformer import TransformersEngine
+from llm.inference.types import InferenceRequest, InferenceResponse
 from llm.model_configs import ModelConfig
 from llm.utils.logs import get_logger
 

@@ -13,6 +13,7 @@ from transformers import (
     __version__ as TRANSFORMERS_VERSION,
 )
 from transformers.modeling_utils import is_peft_available
+from transformers.utils.quantization_config import QuantizationConfigMixin
 
 from llm.prompt import (
     ChatMLFormat,
@@ -27,6 +28,8 @@ from llm.utils.logs import get_logger
 
 logger = get_logger()
 _registry: Dict[str, Type[ModelConfig]] = {}
+
+QuantizationConfig = Union[str, Dict[str, Any], QuantizationConfigMixin]
 
 
 def bnb_quantization(mode: str = "4bit") -> BitsAndBytesConfig:
@@ -113,28 +116,26 @@ class ModelConfig:
     def load(
         self,
         device_map: Optional[Union[str, Dict]] = None,
-        quantization: Union[str, bool] = False,
+        quantization_config: Optional[QuantizationConfig] = None,
         tokenizer_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
         tokenizer_kwargs = tokenizer_kwargs or {}
         if device_map is not None:
             kwargs["device_map"] = device_map
-        model = self.load_model(quantization=quantization, **kwargs)
+        model = self.load_model(quantization_config=quantization_config, **kwargs)
         tokenizer = self.load_tokenizer(**tokenizer_kwargs)
         return model, tokenizer
 
-    def load_model(self, quantization: Union[str, bool] = False, **kwargs) -> PreTrainedModel:
+    def load_model(self, quantization_config: Optional[QuantizationConfig] = None, **kwargs) -> PreTrainedModel:
         model_cls = self.model_cls or AutoModelForCausalLM
         model_kwargs = {
             **self.model_kwargs,
             **kwargs,
         }
-        if quantization:
-            if quantization is True:
-                quantization_config = bnb_quantization()
-            else:
-                quantization_config = bnb_quantization(quantization)
+        if quantization_config:
+            if isinstance(quantization_config, str):
+                quantization_config = bnb_quantization(quantization_config)
             model_kwargs["quantization_config"] = quantization_config
         return model_cls.from_pretrained(self.model_id, **model_kwargs)
 

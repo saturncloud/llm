@@ -53,7 +53,7 @@ class QASession:
                 load_kwargs={
                     "device_map": "auto",
                     "torch_dtype": torch.float16,
-                    "quantization": True,
+                    "quantization_config": "4bit",
                 },
             )
         if isinstance(qa_prompt, type):

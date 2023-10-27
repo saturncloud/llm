@@ -88,7 +88,6 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    quantization = args.quantization.lower() if args.quantization else None
     config = ModelConfig.from_registry(args.model_id)
     engine = MultiprocessEngine.from_model_config(
         config,
@@ -96,7 +95,7 @@ if __name__ == "__main__":
         num_workers=args.num_workers,
         max_delay=args.delay,
         max_pending=args.pending,
-        load_kwargs={"quantization": quantization if quantization else False},
+        load_kwargs={"quantization_config": args.quantization},
     )
 
     app = FastAPI(lifespan=engine_lifecycle, engine=engine)

@@ -121,7 +121,7 @@ def get_transformers_engine(
         num_workers=num_workers,
         load_kwargs={
             "torch_dtype": torch.float16,
-            "quantization": True,
+            "quantization_config": "4bit",
         },
     )
 

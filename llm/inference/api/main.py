@@ -45,11 +45,12 @@ def inference_endpoint(data: InferenceAPIRequest):
         if response.stopped:
             return response.to_dict()
 
-        
+
 def maybe_download_model(model_id: str) -> str:
     if "://" in model_id:
-        dirname = model_id.split('/')[-1]
+        dirname = model_id.split("/")[-1]
         from fsspec.generic import rsync
+
         path = f"/tmp/{dirname}"
         rsync(model_id, path)
         return path

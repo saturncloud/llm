@@ -127,7 +127,9 @@ class ModelConfig:
         tokenizer = self.load_tokenizer(**tokenizer_kwargs)
         return model, tokenizer
 
-    def load_model(self, quantization_config: Optional[QuantizationConfig] = None, **kwargs) -> PreTrainedModel:
+    def load_model(
+        self, quantization_config: Optional[QuantizationConfig] = None, **kwargs
+    ) -> PreTrainedModel:
         model_cls = self.model_cls or AutoModelForCausalLM
         model_kwargs = {
             **self.model_kwargs,

@@ -45,6 +45,16 @@ def inference_endpoint(data: InferenceAPIRequest):
         if response.stopped:
             return response.to_dict()
 
+        
+def maybe_download_model(model_id: str) -> str:
+    if "://" in model_id:
+        dirname = model_id.split('/')[-1]
+        from fsspec.generic import rsync
+        path = f"/tmp/{dirname}"
+        rsync(model_id, path)
+        return path
+    return model_id
+
 
 @asynccontextmanager
 async def engine_lifecycle(app: FastAPI):
@@ -87,8 +97,8 @@ if __name__ == "__main__":
         help="Quantize the model during load with bitsandbytes",
     )
     args = parser.parse_args()
-
-    config = ModelConfig.from_registry(args.model_id)
+    model_id = maybe_download_model(args.model_id)
+    config = ModelConfig.from_registry(model_id)
     engine = MultiprocessEngine.from_model_config(
         config,
         batch_size=args.batch_size,
